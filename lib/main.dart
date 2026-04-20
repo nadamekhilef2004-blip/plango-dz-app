@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'screens/login_page.dart';
+import 'screens/splash_screen.dart';
 import 'utils/theme.dart';
 
 void main() {
-  runApp(const PlangoDZ());
+  runApp(const PlanGoApp());
 }
 
-class PlangoDZ extends StatelessWidget {
-  const PlangoDZ({super.key});
+class PlanGoApp extends StatelessWidget {
+  const PlanGoApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -15,7 +15,7 @@ class PlangoDZ extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'PlanGo Dz',
       theme: AppTheme.lightTheme,
-      home: const LoginPage(),
+      home: const SplashScreen(),   // ⬅️ Premier écran
     );
   }
 }

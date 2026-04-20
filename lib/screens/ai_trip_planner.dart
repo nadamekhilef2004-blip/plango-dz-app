@@ -1,5 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
+import 'dart:io';
+import '../utils/theme.dart';
+import '../data/wilaya_data.dart';
 
 class AITripPlannerPage extends StatefulWidget {
   const AITripPlannerPage({super.key});
@@ -9,363 +18,345 @@ class AITripPlannerPage extends StatefulWidget {
 }
 
 class _AITripPlannerPageState extends State<AITripPlannerPage> {
-  int _days = 3;
-  String _selectedRegion = 'All';
-  DateTime? _startDate;
-  int _travelers = 1;
-  List<Map<String, dynamic>> _itinerary = [];
+  // Étape 1 : Catégorie
+  String _selectedCategory = '';
+  final List<String> _categories = ['Plage', 'Montagne', 'Sahara', 'Culture'];
+
+  // Étape 2 : Wilaya
+  WilayaData? _selectedWilaya;
+  List<WilayaData> _filteredWilayas = [];
+
+  // Étape 3 : Activités sélectionnées
+  List<String> _selectedActivities = [];
+
+  // Étape 4 : Durée
+  int _duration = 3;
+
+  // Étape 5 : Budget
+  String _budgetMode = 'auto'; // 'auto', 'manual', 'economy', 'luxury'
+  int _manualBudget = 50000;
+  String _luxuryLevel = 'Moyen'; // 'Économique', 'Moyen', 'Luxe'
+
+  // Résultat généré
+  String _generatedItinerary = '';
   bool _isGenerating = false;
-  final List<String> _selectedInterests = [];
-  
-  final List<String> regions = ['All', 'Central', 'North East', 'Saharan Algeria'];
-  final List<Map<String, dynamic>> interests = [
-    {'icon': '🏛️', 'name': 'History', 'emoji': '🏛️'},
-    {'icon': '🏖️', 'name': 'Beach', 'emoji': '🏖️'},
-    {'icon': '🏔️', 'name': 'Mountains', 'emoji': '🏔️'},
-    {'icon': '🏜️', 'name': 'Desert', 'emoji': '🏜️'},
-    {'icon': '🍽️', 'name': 'Food', 'emoji': '🍽️'},
-    {'icon': '🎨', 'name': 'Culture', 'emoji': '🎨'},
-    {'icon': '📸', 'name': 'Photography', 'emoji': '📸'},
-    {'icon': '🕌', 'name': 'Architecture', 'emoji': '🕌'},
-  ];
+
+  // Contrôleurs
+  final TextEditingController _manualBudgetController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _manualBudgetController.text = '50000';
+  }
+
+  @override
+  void dispose() {
+    _manualBudgetController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: const Text('AI Trip Planner'),
-        backgroundColor: const Color(0xFF2E7D32),
-        elevation: 0,
+        title: const Text('Planificateur IA'),
+        backgroundColor: AppTheme.primaryColor,
+        foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Hero Section
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF2E7D32), Color(0xFF4CAF50)],
-                ),
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
+            const Text(
+              '🤖 Créez votre voyage sur mesure',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Suivez les étapes pour obtenir un itinéraire personnalisé et un PDF élégant.',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 30),
+
+            // Étape 1 : Catégorie
+            const Text('1. Quel type de voyage ?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: _categories.map((cat) {
+                return ChoiceChip(
+                  label: Text(cat),
+                  selected: _selectedCategory == cat,
+                  onSelected: (selected) {
+                    setState(() {
+                      _selectedCategory = selected ? cat : '';
+                      _selectedWilaya = null;
+                      _filteredWilayas = [];
+                      _selectedActivities.clear();
+                      if (selected) {
+                        _filteredWilayas = allWilayas.where((w) => w.categories.contains(cat)).toList();
+                      }
+                    });
+                  },
+                  selectedColor: AppTheme.primaryColor,
+                  backgroundColor: Colors.white,
+                );
+              }).toList(),
+            ),
+
+            if (_selectedCategory.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              // Étape 2 : Wilaya
+              const Text('2. Choisissez votre destination', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 120,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _filteredWilayas.length,
+                  itemBuilder: (context, index) {
+                    final wilaya = _filteredWilayas[index];
+                    final isSelected = _selectedWilaya == wilaya;
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedWilaya = wilaya;
+                          _selectedActivities.clear();
+                        });
+                      },
+                      child: Container(
+                        width: 120,
+                        margin: const EdgeInsets.only(right: 12),
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppTheme.primaryColor.withOpacity(0.1) : Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isSelected ? AppTheme.primaryColor : Colors.grey.shade300,
+                            width: isSelected ? 2 : 1,
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(40),
+                              child: Image.asset(
+                                wilaya.imagePath,
+                                width: 60,
+                                height: 60,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Icon(Icons.location_city, size: 40),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(wilaya.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
-              child: Column(
+            ],
+
+            if (_selectedWilaya != null) ...[
+              const SizedBox(height: 24),
+              // Étape 3 : Activités
+              const Text('3. Quelles activités souhaitez-vous ?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: _selectedWilaya!.activities.map((activity) {
+                  final isSelected = _selectedActivities.contains(activity);
+                  return FilterChip(
+                    label: Text(activity),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      setState(() {
+                        if (selected) {
+                          _selectedActivities.add(activity);
+                        } else {
+                          _selectedActivities.remove(activity);
+                        }
+                      });
+                    },
+                    backgroundColor: Colors.white,
+                    selectedColor: AppTheme.primaryColor.withOpacity(0.2),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+              // Attractions supplémentaires (optionnel)
+              const Text('Lieux d’intérêt disponibles :', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              Wrap(
+                spacing: 4,
+                children: _selectedWilaya!.attractions.map((a) => Chip(label: Text(a), backgroundColor: Colors.grey.shade100)).toList(),
+              ),
+
+              const SizedBox(height: 24),
+              // Étape 4 : Durée
+              const Text('4. Durée du séjour (jours)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.auto_awesome, color: Colors.white, size: 48),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'AI-Powered Trip Planner',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle, size: 40),
+                    onPressed: () => setState(() => _duration > 1 ? _duration-- : null),
+                    color: AppTheme.primaryColor,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Let AI create your perfect Algerian adventure',
-                    style: TextStyle(color: Colors.white.withOpacity(0.9)),
+                  Container(
+                    width: 80,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: AppTheme.primaryColor),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text('$_duration', textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle, size: 40),
+                    onPressed: () => setState(() => _duration < 21 ? _duration++ : null),
+                    color: AppTheme.primaryColor,
                   ),
                 ],
               ),
-            ),
-            
-            // Trip Configuration
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+
+              const SizedBox(height: 24),
+              // Étape 5 : Budget
+              const Text('5. Budget', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              Row(
                 children: [
-                  // Duration
-                  const Text(
-                    '📅 Trip Duration',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(12),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('Auto (estimation)'),
+                      selected: _budgetMode == 'auto',
+                      onSelected: (s) => setState(() => _budgetMode = 'auto'),
+                      selectedColor: AppTheme.primaryColor,
+                      backgroundColor: Colors.white,
                     ),
-                    child: Row(
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('Je donne un montant'),
+                      selected: _budgetMode == 'manual',
+                      onSelected: (s) => setState(() => _budgetMode = 'manual'),
+                      selectedColor: AppTheme.primaryColor,
+                      backgroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('Économique'),
+                      selected: _luxuryLevel == 'Économique',
+                      onSelected: (s) => setState(() { _budgetMode = 'economy'; _luxuryLevel = 'Économique'; }),
+                      selectedColor: AppTheme.primaryColor,
+                      backgroundColor: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('Moyen'),
+                      selected: _luxuryLevel == 'Moyen',
+                      onSelected: (s) => setState(() { _budgetMode = 'economy'; _luxuryLevel = 'Moyen'; }),
+                      selectedColor: AppTheme.primaryColor,
+                      backgroundColor: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('Luxe'),
+                      selected: _luxuryLevel == 'Luxe',
+                      onSelected: (s) => setState(() { _budgetMode = 'economy'; _luxuryLevel = 'Luxe'; }),
+                      selectedColor: AppTheme.primaryColor,
+                      backgroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              if (_budgetMode == 'manual') ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _manualBudgetController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Budget total (DZD)',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    prefixIcon: const Icon(Icons.money),
+                  ),
+                  onChanged: (value) => _manualBudget = int.tryParse(value) ?? 0,
+                ),
+              ],
+
+              const SizedBox(height: 32),
+              // Bouton Générer
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  onPressed: _isGenerating ? null : _generateTrip,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  child: _isGenerating
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('✨ Générer mon itinéraire ✨', style: TextStyle(fontSize: 18)),
+                ),
+              ),
+            ],
+
+            if (_generatedItinerary.isNotEmpty) ...[
+              const SizedBox(height: 30),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.remove),
-                          onPressed: () {
-                            if (_days > 1) setState(() => _days--);
-                          },
+                        const Text(
+                          '🗺️ Votre itinéraire personnalisé',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
-                        Text(
-                          '$_days ${_days == 1 ? 'Day' : 'Days'}',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.add),
-                          onPressed: () {
-                            if (_days < 14) setState(() => _days++);
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 20),
-                  
-                  // Start Date
-                  const Text(
-                    '📆 Start Date',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: _selectDate,
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.calendar_today, color: Color(0xFF2E7D32)),
-                          const SizedBox(width: 12),
-                          Text(
-                            _startDate == null
-                                ? 'Select start date'
-                                : DateFormat('EEEE, MMMM d, yyyy').format(_startDate!),
-                            style: TextStyle(
-                              color: _startDate == null ? Colors.grey : Colors.black,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 20),
-                  
-                  // Travelers
-                  const Text(
-                    '👥 Travelers',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Number of travelers', style: TextStyle(fontSize: 16)),
                         Row(
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.remove),
-                              onPressed: () {
-                                if (_travelers > 1) setState(() => _travelers--);
-                              },
-                            ),
-                            Text(
-                              '$_travelers',
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
+                              onPressed: () => _generateAndSharePDF(),
+                              tooltip: 'Exporter en PDF',
                             ),
                             IconButton(
-                              icon: const Icon(Icons.add),
-                              onPressed: () {
-                                if (_travelers < 10) setState(() => _travelers++);
-                              },
+                              icon: const Icon(Icons.share),
+                              onPressed: () => _shareText(),
+                              tooltip: 'Partager',
                             ),
                           ],
                         ),
                       ],
                     ),
-                  ),
-                  
-                  const SizedBox(height: 20),
-                  
-                  // Region
-                  const Text(
-                    '🗺️ Region Preference',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 40,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: regions.length,
-                      itemBuilder: (context, index) {
-                        final region = regions[index];
-                        final isSelected = _selectedRegion == region;
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: FilterChip(
-                            label: Text(region),
-                            selected: isSelected,
-                            onSelected: (selected) {
-                              setState(() {
-                                _selectedRegion = region;
-                              });
-                            },
-                            backgroundColor: Colors.grey.shade200,
-                            selectedColor: const Color(0xFF2E7D32),
-                            labelStyle: TextStyle(
-                              color: isSelected ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 20),
-                  
-                  // Interests
-                  const Text(
-                    '⭐ Interests',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: interests.map((interest) {
-                      final isSelected = _selectedInterests.contains(interest['name']);
-                      return FilterChip(
-                        label: Text('${interest['icon']} ${interest['name']}'),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              _selectedInterests.add(interest['name'] as String);
-                            } else {
-                              _selectedInterests.remove(interest['name']);
-                            }
-                          });
-                        },
-                        backgroundColor: Colors.grey.shade100,
-                        selectedColor: const Color(0xFF2E7D32).withOpacity(0.2),
-                        labelStyle: TextStyle(
-                          color: isSelected ? const Color(0xFF2E7D32) : Colors.black87,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Generate Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: _generateItinerary,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2E7D32),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 2,
-                      ),
-                      child: _isGenerating
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Text(
-                              '✨ Generate My Trip ✨',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                            ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
-            // Generated Itinerary
-            if (_itinerary.isNotEmpty) ...[
-              const Divider(height: 32),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Your Personalized Itinerary',
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '✨ AI-generated plan based on your preferences',
-                      style: TextStyle(color: Colors.grey.shade600),
-                    ),
-                    const SizedBox(height: 8),
-                    if (_startDate != null)
-                      Text(
-                        '📅 Starting ${DateFormat('MMMM d, yyyy').format(_startDate!)}',
-                        style: TextStyle(color: const Color(0xFF2E7D32), fontWeight: FontWeight.w500),
-                      ),
-                    const SizedBox(height: 16),
-                    ..._itinerary.map((day) => _buildDayCard(day)),
-                    
-                    // Summary Card
-                    const SizedBox(height: 24),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [const Color(0xFF2E7D32).withOpacity(0.1), Colors.white],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFF2E7D32).withOpacity(0.3)),
-                      ),
-                      child: Column(
-                        children: [
-                          const Text(
-                            'Trip Summary',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 12),
-                          _buildSummaryRow('Total Days', '$_days days'),
-                          _buildSummaryRow('Travelers', '$_travelers person${_travelers > 1 ? 's' : ''}'),
-                          _buildSummaryRow('Region', _selectedRegion),
-                          _buildSummaryRow('Interests', _selectedInterests.isEmpty ? 'All' : _selectedInterests.join(', ')),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Trip saved to My Trips!'),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              },
-                              icon: const Icon(Icons.save),
-                              label: const Text('Save This Trip'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF2E7D32),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                    const SizedBox(height: 12),
+                    SelectableText(
+                      _generatedItinerary,
+                      style: const TextStyle(height: 1.6),
                     ),
                   ],
                 ),
@@ -377,237 +368,125 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
     );
   }
 
-  Future<void> _selectDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-    
-    if (picked != null) {
-      setState(() {
-        _startDate = picked;
-      });
-    }
-  }
-
-  void _generateItinerary() {
+  Future<void> _generateTrip() async {
+    if (_selectedWilaya == null) return;
     setState(() {
       _isGenerating = true;
+      _generatedItinerary = '';
     });
-    
-    // Simulate AI generation delay
-    Future.delayed(const Duration(seconds: 2), () {
-      setState(() {
-        _itinerary = _createSampleItinerary();
-        _isGenerating = false;
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✨ Your personalized itinerary is ready! ✨'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    });
-  }
 
-  List<Map<String, dynamic>> _createSampleItinerary() {
-    List<Map<String, dynamic>> itinerary = [];
-    
-    for (int i = 1; i <= _days; i++) {
-      itinerary.add({
-        'day': i,
-        'title': _getDayTitle(i),
-        'activities': _getActivitiesForDay(i),
-        'meals': _getMealsForDay(i),
-        'accommodation': _getAccommodationForDay(i),
-        'highlights': _getHighlightsForDay(i),
-        'weather': _getWeatherForDay(i),
-      });
+    // Calcul du budget si auto
+    int totalBudget = 0;
+    if (_budgetMode == 'auto') {
+      totalBudget = (_selectedWilaya!.defaultPricePerDay * _duration).round();
+    } else if (_budgetMode == 'manual') {
+      totalBudget = _manualBudget;
+    } else {
+      // economy / moyen / luxe
+      double multiplier = _luxuryLevel == 'Économique' ? 0.7 : (_luxuryLevel == 'Luxe' ? 1.8 : 1.2);
+      totalBudget = (_selectedWilaya!.defaultPricePerDay * _duration * multiplier).round();
     }
-    
-    return itinerary;
-  }
 
-  String _getDayTitle(int day) {
-    if (day == 1) return '🌅 Arrival & Discovery';
-    if (day == _days) return '🎁 Culture & Departure';
-    if (day == 2 && _days > 2) return '🏛️ Historical Exploration';
-    if (day == 3 && _days > 3) return '🍽️ Culinary Experience';
-    if (day == 4 && _days > 4) return '🏔️ Adventure Day';
-    return '🗺️ Exploration Day';
-  }
-
-  List<String> _getActivitiesForDay(int day) {
-    List<String> activities = [
-      'Morning: Visit historical landmarks and museums',
-      'Afternoon: Local cuisine tasting and shopping',
-      'Evening: Cultural performance or sunset view',
-    ];
-    
-    if (_selectedRegion == 'Saharan Algeria') {
-      activities.add('🌙 Night: Stargazing in the desert');
-    }
-    if (_selectedInterests.contains('Beach')) {
-      activities.add('🏖️ Beach time and water activities');
-    }
-    if (_selectedInterests.contains('Mountains')) {
-      activities.add('⛰️ Mountain hiking and scenic views');
-    }
-    if (day == 1) {
-      activities.insert(0, '🛎️ Check-in and welcome briefing');
-    }
-    if (day == _days) {
-      activities.add('🎁 Souvenir shopping');
-      activities.add('✈️ Transfer to airport/station');
-    }
-    
-    return activities;
-  }
-
-  List<String> _getMealsForDay(int day) {
-    List<String> meals = [
-      '🍳 Breakfast: Traditional Algerian breakfast with msemen and honey',
-      '🍲 Lunch: Local restaurant - Try couscous or chorba',
-      '🍽️ Dinner: Authentic mechoui (roasted lamb) or tajine',
-    ];
-    
-    if (_selectedInterests.contains('Food')) {
-      meals.add('🍰 Dessert: Traditional baklava or makroud');
-    }
-    
-    return meals;
-  }
-
-  String _getAccommodationForDay(int day) {
-    if (day == 1) return '🏨 Central hotel with traditional architecture';
-    if (_selectedRegion == 'Saharan Algeria') return '🏜️ Desert camp experience';
-    if (_selectedInterests.contains('Beach')) return '🏖️ Beachfront resort';
-    return '🏨 Local riad or boutique hotel';
-  }
-
-  List<String> _getHighlightsForDay(int day) {
-    List<String> highlights = [];
-    
-    if (day == 1) highlights.add('Welcome dinner with traditional music');
-    if (day == 2 && _selectedRegion == 'Central') highlights.add('Casbah guided tour');
-    if (day == 3 && _selectedInterests.contains('Photography')) highlights.add('Sunset photography session');
-    if (day == _days) highlights.add('Farewell ceremony');
-    
-    return highlights;
-  }
-
-  String _getWeatherForDay(int day) {
-    if (_selectedRegion == 'Saharan Algeria') return '☀️ Hot and sunny, 25-35°C';
-    if (_selectedRegion == 'North East') return '🌊 Mild Mediterranean, 18-25°C';
-    return '🌤️ Pleasant weather, 20-28°C';
-  }
-
-  Widget _buildSummaryRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(color: Colors.grey.shade600)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
-        ],
-      ),
+    // Génération locale (car OpenAI nécessite clé, on utilise un template enrichi)
+    String itinerary = _generateLocalItinerary(
+      wilaya: _selectedWilaya!,
+      duration: _duration,
+      activities: _selectedActivities,
+      budget: totalBudget,
     );
+    setState(() {
+      _generatedItinerary = itinerary;
+      _isGenerating = false;
+    });
   }
 
-  Widget _buildDayCard(Map<String, dynamic> day) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ExpansionTile(
-        leading: CircleAvatar(
-          backgroundColor: const Color(0xFF2E7D32),
-          child: Text('${day['day']}', style: const TextStyle(color: Colors.white)),
-        ),
-        title: Text(day['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(day['weather'], style: const TextStyle(fontSize: 12)),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Accommodation
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2E7D32).withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.hotel, size: 20, color: Color(0xFF2E7D32)),
-                      const SizedBox(width: 12),
-                      Expanded(child: Text(day['accommodation'])),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                // Activities
-                const Text(
-                  '📋 Activities',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                ...(day['activities'] as List).map((activity) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.check_circle, size: 16, color: Color(0xFF2E7D32)),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(activity)),
-                    ],
-                  ),
-                )),
-                
-                const SizedBox(height: 16),
-                
-                // Meals
-                const Text(
-                  '🍽️ Meals',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                ...(day['meals'] as List).map((meal) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text('• $meal'),
-                )),
-                
-                // Highlights
-                if ((day['highlights'] as List).isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  const Text(
-                    '⭐ Highlights',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  ...(day['highlights'] as List).map((highlight) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.star, size: 14, color: Colors.amber),
-                        const SizedBox(width: 8),
-                        Text(highlight),
-                      ],
-                    ),
-                  )),
-                ],
-              ],
+  String _generateLocalItinerary({
+    required WilayaData wilaya,
+    required int duration,
+    required List<String> activities,
+    required int budget,
+  }) {
+    StringBuffer sb = StringBuffer();
+    sb.writeln('## 🌟 Itinéraire à ${wilaya.name} ($duration jours)\n');
+    sb.writeln('**Budget total estimé :** ${NumberFormat('#,##0').format(budget)} DZD\n');
+    sb.writeln('**Activités sélectionnées :** ${activities.isEmpty ? 'Toutes les activités suggérées' : activities.join(', ')}\n');
+    sb.writeln('---\n');
+
+    for (int day = 1; day <= duration; day++) {
+      sb.writeln('### Jour $day');
+      sb.writeln('');
+      // Choix d’activités cyclique
+      int actIndex = (day - 1) % wilaya.activities.length;
+      String mainActivity = activities.isNotEmpty && day <= activities.length
+          ? activities[day - 1]
+          : wilaya.activities[actIndex];
+      sb.writeln('- **Matin :** $mainActivity');
+      sb.writeln('- **Déjeuner :** ${wilaya.restaurants[day % wilaya.restaurants.length]} (cuisine locale)');
+      sb.writeln('- **Après-midi :** Visite de ${wilaya.attractions[(day * 2) % wilaya.attractions.length]}');
+      sb.writeln('- **Dîner & Hébergement :** ${wilaya.restaurants[(day + 1) % wilaya.restaurants.length]} – Hôtel recommandé (à partir de ${(budget / duration * 0.4).round()} DA/nuit)');
+      sb.writeln('');
+    }
+
+    sb.writeln('## 💡 Conseils pratiques');
+    sb.writeln('- **Transport :** Sur place, taxis ou location de voiture recommandée.');
+    sb.writeln('- **Météo :** Consultez la météo avant votre départ (saison ${wilaya.categories.contains('Plage') ? 'idéale en été' : 'printemps/automne'}).');
+    sb.writeln('- **Argent :** Prévoyez des espèces pour les petits commerces.');
+    sb.writeln('- **Langue :** Le français est largement compris.');
+    sb.writeln('');
+    sb.writeln('✨ Profitez de votre séjour à ${wilaya.name} !');
+
+    return sb.toString();
+  }
+
+  Future<void> _generateAndSharePDF() async {
+    if (_generatedItinerary.isEmpty) return;
+
+    // Utiliser PdfGoogleFonts pour le web (pas besoin de fichiers locaux)
+    final poppinsRegular = await PdfGoogleFonts.poppinsRegular();
+    final poppinsBold = await PdfGoogleFonts.poppinsBold();
+
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: pw.EdgeInsets.all(20),
+        build: (context) => [
+          pw.Header(
+            level: 0,
+            child: pw.Text(
+              'PlanGo Dz - Itinéraire personnalisé',
+              style: pw.TextStyle(font: poppinsBold, fontSize: 24, color: PdfColors.green800),
+            ),
+          ),
+          pw.SizedBox(height: 20),
+          pw.Text(
+            'Généré le ${DateFormat('dd/MM/yyyy').format(DateTime.now())}',
+            style: pw.TextStyle(font: poppinsRegular, fontSize: 12, color: PdfColors.grey),
+          ),
+          pw.SizedBox(height: 20),
+          pw.Text(
+            _generatedItinerary,
+            style: pw.TextStyle(font: poppinsRegular, fontSize: 11),
+          ),
+          pw.SizedBox(height: 30),
+          pw.Center(
+            child: pw.Text(
+              'PlanGo Dz – Votre guide de voyage en Algérie',
+              style: pw.TextStyle(font: poppinsRegular, fontSize: 10, color: PdfColors.grey),
             ),
           ),
         ],
       ),
     );
+
+    await Printing.sharePdf(
+      bytes: await pdf.save(),
+      filename: 'plan_voyage_${_selectedWilaya?.name}.pdf',
+    );
+  }
+
+  void _shareText() {
+    Share.share(_generatedItinerary, subject: 'Mon voyage sur mesure');
   }
 }
