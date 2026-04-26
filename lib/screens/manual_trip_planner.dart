@@ -21,11 +21,11 @@ class _ManualTripPlannerPageState extends State<ManualTripPlannerPage> {
 
   // === LISTE DES CATÉGORIES (comme sur l'image) ===
   final List<Map<String, dynamic>> _categories = [
-    {'name': 'Montagnes', 'icon': '🏔️', 'image': 'assets/images/montagne.jpg', 'color': 0xFF81C784},
-    {'name': 'Plages', 'icon': '🏖️', 'image': 'assets/images/plage.jpg', 'color': 0xFF4FC3F7},
-    {'name': 'Sahara', 'icon': '🏜️', 'image': 'assets/images/sahara.jpg', 'color': 0xFFFFB74D},
-    {'name': 'Culture', 'icon': '🏛️', 'image': 'assets/images/culture.jpg', 'color': 0xFFCE93D8},
-    {'name': 'Camping', 'icon': '🏕️', 'image': 'assets/images/camping.jpg', 'color': 0xFF81C784},
+    {'name': 'Montagnes', 'icon': '🏔', 'image': 'assets/images/montagne.jpg', 'color': 0xFF81C784},
+    {'name': 'Plages', 'icon': '', 'image': 'assets/images/plage.jpg', 'color': 0xFF4FC3F7},
+    {'name': 'Sahara', 'icon': '', 'image': 'assets/images/sahara.jpg', 'color': 0xFFFFB74D},
+    {'name': 'Culture', 'icon': '', 'image': 'assets/images/culture.jpg', 'color': 0xFFCE93D8},
+    {'name': 'Camping', 'icon': '🏕', 'image': 'assets/images/camping.jpg', 'color': 0xFF81C784},
     {'name': 'Randonnée', 'icon': '🥾', 'image': 'assets/images/randonnee.jpg', 'color': 0xFF81C784},
   ];
 
@@ -66,12 +66,12 @@ class _ManualTripPlannerPageState extends State<ManualTripPlannerPage> {
   final List<Map<String, dynamic>> _activitiesList = [
     {'name': 'Randonnée', 'icon': '🥾', 'image': 'assets/images/randonnee.jpg', 'color': 0xFF81C784},
     {'name': 'Baignade', 'icon': '🏊', 'image': 'assets/images/baignade.jpg', 'color': 0xFF4FC3F7},
-    {'name': 'Visite historique', 'icon': '🏛️', 'image': 'assets/images/visite_historique.jpg', 'color': 0xFFCE93D8},
+    {'name': 'Visite historique', 'icon': '', 'image': 'assets/images/visite_historique.jpg', 'color': 0xFFCE93D8},
     {'name': 'Photographie', 'icon': '📸', 'image': null, 'color': 0xFFFFB74D},
     {'name': 'Cuisine locale', 'icon': '🍲', 'image': 'assets/images/cuisine.jpg', 'color': 0xFFF06292},
-    {'name': 'Shopping', 'icon': '🛍️', 'image': 'assets/images/shopping.jpg', 'color': 0xFFE57373},
-    {'name': 'Camping', 'icon': '🏕️', 'image': 'assets/images/camping.jpg', 'color': 0xFF81C784},
-    {'name': 'Ski', 'icon': '⛷️', 'image': 'assets/images/ski.jpg', 'color': 0xFF90CAF9},
+    {'name': 'Shopping', 'icon': '🛍', 'image': 'assets/images/shopping.jpg', 'color': 0xFFE57373},
+    {'name': 'Camping', 'icon': '🏕', 'image': 'assets/images/camping.jpg', 'color': 0xFF81C784},
+    {'name': 'Ski', 'icon': '⛷', 'image': 'assets/images/ski.jpg', 'color': 0xFF90CAF9},
     {'name': 'Plongée', 'icon': '🤿', 'image': 'assets/images/plongee.jpg', 'color': 0xFF4FC3F7},
   ];
 
@@ -86,7 +86,7 @@ class _ManualTripPlannerPageState extends State<ManualTripPlannerPage> {
   final List<Map<String, dynamic>> _transportsList = [
     {'icon': '🚗', 'label': 'Voiture personnelle', 'desc': 'Liberté et flexibilité', 'color': 0xFF4FC3F7},
     {'icon': '🚌', 'label': 'Bus/Train', 'desc': 'Économique et confortable', 'color': 0xFF81C784},
-    {'icon': '✈️', 'label': 'Avion', 'desc': 'Rapide pour longues distances', 'color': 0xFFFFB74D},
+    {'icon': '✈', 'label': 'Avion', 'desc': 'Rapide pour longues distances', 'color': 0xFFFFB74D},
     {'icon': '🚐', 'label': 'Location de voiture', 'desc': 'À la location sur place', 'color': 0xFFE57373},
     {'icon': '👣', 'label': 'Randonnée', 'desc': 'Pour les aventuriers', 'color': 0xFF81C784},
   ];
@@ -138,7 +138,7 @@ class _ManualTripPlannerPageState extends State<ManualTripPlannerPage> {
         steps: [
           _buildStep(0, '🎯 Choisis une catégorie', _buildCategoryStep()),
           _buildStep(1, '🌍 Type de voyage', _buildTravelTypeStep()),
-          _buildStep(2, '🏞️ Activités', _buildActivityStep()),
+          _buildStep(2, ' Activités', _buildActivityStep()),
           _buildStep(3, '👥 Compagnie', _buildCompanionStep()),
           _buildStep(4, '🚗 Transport', _buildTransportStep()),
           _buildStep(5, '💰 Budget', _buildBudgetStep()),
@@ -473,7 +473,7 @@ class _ManualTripPlannerPageState extends State<ManualTripPlannerPage> {
       children: [
         _buildSummaryCard('🎯 Catégorie', _selectedCategory.isEmpty ? 'Non sélectionnée' : _selectedCategory),
         _buildSummaryCard('🌍 Destination', _selectedDestination.isEmpty ? 'Non sélectionnée' : _selectedDestination),
-        _buildSummaryCard('🏞️ Activités', _selectedActivities.isEmpty ? 'Aucune' : _selectedActivities.join(', ')),
+        _buildSummaryCard(' Activités', _selectedActivities.isEmpty ? 'Aucune' : _selectedActivities.join(', ')),
         _buildSummaryCard('👥 Compagnie', _selectedTravelCompanion.isEmpty ? 'Non sélectionnée' : _selectedTravelCompanion),
         _buildSummaryCard('🚗 Transport', _selectedTransport.isEmpty ? 'Non sélectionné' : _selectedTransport),
         _buildSummaryCard('💰 Budget', '${_budgetAmount.round()} DA'),
@@ -518,7 +518,7 @@ class _ManualTripPlannerPageState extends State<ManualTripPlannerPage> {
               Text('📅 Durée: $_duration jours'),
               Text('💰 Budget estimé: $estimatedCost DA'),
               const Divider(),
-              const Text('✨ Suggestions:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(' Suggestions:', style: TextStyle(fontWeight: FontWeight.bold)),
               const Text('• Réservez vos hébergements à l\'avance'),
               const Text('• Prévoyez des vêtements adaptés'),
               const Text('• Téléchargez les cartes hors ligne'),

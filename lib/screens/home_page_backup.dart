@@ -9,7 +9,6 @@ import 'login_page.dart';
 import 'ai_trip_planner.dart';
 import 'wilaya_detail_page.dart';
 import 'manual_trip_planner.dart';
-import 'recommendation_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});

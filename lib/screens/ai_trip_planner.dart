@@ -71,7 +71,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              '🤖 Créez votre voyage sur mesure',
+              ' Créez votre voyage sur mesure',
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
@@ -313,7 +313,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
                   ),
                   child: _isGenerating
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('✨ Générer mon itinéraire ✨', style: TextStyle(fontSize: 18)),
+                      : const Text(' Générer mon itinéraire ', style: TextStyle(fontSize: 18)),
                 ),
               ),
             ],
@@ -334,7 +334,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          '🗺️ Votre itinéraire personnalisé',
+                          '🗺 Votre itinéraire personnalisé',
                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         Row(
@@ -407,7 +407,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
     required int budget,
   }) {
     StringBuffer sb = StringBuffer();
-    sb.writeln('## 🌟 Itinéraire à ${wilaya.name} ($duration jours)\n');
+    sb.writeln('##  Itinéraire à ${wilaya.name} ($duration jours)\n');
     sb.writeln('**Budget total estimé :** ${NumberFormat('#,##0').format(budget)} DZD\n');
     sb.writeln('**Activités sélectionnées :** ${activities.isEmpty ? 'Toutes les activités suggérées' : activities.join(', ')}\n');
     sb.writeln('---\n');
@@ -427,13 +427,13 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
       sb.writeln('');
     }
 
-    sb.writeln('## 💡 Conseils pratiques');
+    sb.writeln('##  Conseils pratiques');
     sb.writeln('- **Transport :** Sur place, taxis ou location de voiture recommandée.');
     sb.writeln('- **Météo :** Consultez la météo avant votre départ (saison ${wilaya.categories.contains('Plage') ? 'idéale en été' : 'printemps/automne'}).');
     sb.writeln('- **Argent :** Prévoyez des espèces pour les petits commerces.');
     sb.writeln('- **Langue :** Le français est largement compris.');
     sb.writeln('');
-    sb.writeln('✨ Profitez de votre séjour à ${wilaya.name} !');
+    sb.writeln(' Profitez de votre séjour à ${wilaya.name} !');
 
     return sb.toString();
   }

@@ -174,7 +174,7 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  '💡 Travel Tips',
+                  ' Travel Tips',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF212423)),
                 ),
                 const SizedBox(height: 8),

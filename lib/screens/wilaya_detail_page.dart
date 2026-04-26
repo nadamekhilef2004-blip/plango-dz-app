@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../utils/theme.dart';
+import 'recommendation_page.dart';
+import '../models/destination.dart';
 
 class WilayaDetailPage extends StatelessWidget {
   final String name;
@@ -10,6 +12,7 @@ class WilayaDetailPage extends StatelessWidget {
   final List<String> attractions;
   final String bestTime;
   final String famousFood;
+  final List<Destination>? allDestinations;
 
   const WilayaDetailPage({
     super.key,
@@ -21,22 +24,46 @@ class WilayaDetailPage extends StatelessWidget {
     required this.attractions,
     required this.bestTime,
     required this.famousFood,
+    this.allDestinations,
   });
 
   @override
   Widget build(BuildContext context) {
+    final currentDestination = Destination(
+      name: name,
+      region: '',
+      imageUrl: imagePath,
+      description: description,
+    );
+
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
         title: Text(name),
         backgroundColor: color,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.recommend),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => RecommendationPage(
+                    allDestinations: allDestinations ?? [],
+                    currentDestination: currentDestination,
+                  ),
+                ),
+              );
+            },
+            tooltip: 'Recommendations',
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image de couverture
             Container(
               height: 250,
               width: double.infinity,
@@ -94,8 +121,6 @@ class WilayaDetailPage extends StatelessWidget {
                 ),
               ),
             ),
-            
-            // Description
             Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -118,10 +143,7 @@ class WilayaDetailPage extends StatelessWidget {
                       color: AppTheme.textSecondary,
                     ),
                   ),
-                  
                   const SizedBox(height: 24),
-                  
-                  // Meilleure période
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -137,7 +159,7 @@ class WilayaDetailPage extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Meilleure période pour visiter',
+                                'Best time to visit',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -149,12 +171,9 @@ class WilayaDetailPage extends StatelessWidget {
                       ],
                     ),
                   ),
-                  
                   const SizedBox(height: 24),
-                  
-                  // Lieux à visiter
                   const Text(
-                    '🏛️ Lieux à visiter',
+                    'Attractions',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -172,10 +191,7 @@ class WilayaDetailPage extends StatelessWidget {
                       ],
                     ),
                   )),
-                  
                   const SizedBox(height: 24),
-                  
-                  // Spécialité culinaire
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -191,7 +207,7 @@ class WilayaDetailPage extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                '🍽️ Spécialité culinaire',
+                                'Local cuisine',
                                 style: TextStyle(fontWeight: FontWeight.bold),
                               ),
                               Text(famousFood),
