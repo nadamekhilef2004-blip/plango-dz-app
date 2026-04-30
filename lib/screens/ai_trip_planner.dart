@@ -68,7 +68,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              '🤖 Créez votre voyage sur mesure',
+              ' Créez votre voyage sur mesure',
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
@@ -304,7 +304,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
                   ),
                   child: _isGenerating
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('✨ Générer mon itinéraire ✨', style: TextStyle(fontSize: 18)),
+                      : const Text(' Générer mon itinéraire ', style: TextStyle(fontSize: 18)),
                 ),
               ),
             ],
@@ -325,7 +325,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          '🗺️ Votre itinéraire personnalisé',
+                          '🗺 Votre itinéraire personnalisé',
                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         Row(
@@ -406,12 +406,19 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
     final dailyBudget = (budget / duration).round();
 
     StringBuffer sb = StringBuffer();
+<<<<<<< HEAD
 
     sb.writeln("## 🌍 Voyage à ${wilaya.name}\n");
     sb.writeln("**Durée :** $duration jours");
     sb.writeln("**Budget total :** ${NumberFormat('#,##0').format(budget)} DZD\n");
     sb.writeln("**Budget journalier estimé :** ${NumberFormat('#,##0').format(dailyBudget)} DZD/jour\n");
     sb.writeln("---\n");
+=======
+    sb.writeln('##  Itinéraire à ${wilaya.name} ($duration jours)\n');
+    sb.writeln('**Budget total estimé :** ${NumberFormat('#,##0').format(budget)} DZD\n');
+    sb.writeln('**Activités sélectionnées :** ${activities.isEmpty ? 'Toutes les activités suggérées' : activities.join(', ')}\n');
+    sb.writeln('---\n');
+>>>>>>> 4b7ad39b7e8138d7e70f9fbadf5d6a44369d5561
 
     for (int day = 1; day <= duration; day++) {
       final act = shuffledActs[(day - 1) % shuffledActs.length];
@@ -425,12 +432,22 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
       sb.writeln("- **Dîner :** $rest\n");
     }
 
+<<<<<<< HEAD
     sb.writeln("## 💡 Conseils pratiques\n");
     sb.writeln("- **Transport** : Sur place, taxis ou location de voiture recommandée.");
     sb.writeln("- **Météo** : Consultez la météo avant votre départ.");
     sb.writeln("- **Argent** : Prévoyez des espèces pour les petits commerces.");
     sb.writeln("- **Langue** : Le français est largement compris.\n");
     sb.writeln("✨ **Profitez de votre séjour à ${wilaya.name} !**");
+=======
+    sb.writeln('##  Conseils pratiques');
+    sb.writeln('- **Transport :** Sur place, taxis ou location de voiture recommandée.');
+    sb.writeln('- **Météo :** Consultez la météo avant votre départ (saison ${wilaya.categories.contains('Plage') ? 'idéale en été' : 'printemps/automne'}).');
+    sb.writeln('- **Argent :** Prévoyez des espèces pour les petits commerces.');
+    sb.writeln('- **Langue :** Le français est largement compris.');
+    sb.writeln('');
+    sb.writeln(' Profitez de votre séjour à ${wilaya.name} !');
+>>>>>>> 4b7ad39b7e8138d7e70f9fbadf5d6a44369d5561
 
     return sb.toString();
   }
