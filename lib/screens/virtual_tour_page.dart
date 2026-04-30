@@ -11,7 +11,7 @@ class VirtualTourPage extends StatefulWidget {
 }
 
 class _VirtualTourPageState extends State<VirtualTourPage> {
-  int _selectedVideo = 0;
+  final int _selectedVideo = 0;
 
   final Map<String, List<Map<String, String>>> _videos = {
     'Algiers': [

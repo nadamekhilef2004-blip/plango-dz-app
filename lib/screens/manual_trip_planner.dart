@@ -104,8 +104,11 @@ class _ManualTripPlannerPageState extends State<ManualTripPlannerPage> {
       body: Stepper(
         currentStep: _currentStep,
         onStepContinue: () {
-          if (_currentStep < 6) setState(() => _currentStep++);
-          else _showTripSummary();
+          if (_currentStep < 6) {
+            setState(() => _currentStep++);
+          } else {
+            _showTripSummary();
+          }
         },
         onStepCancel: () {
           if (_currentStep > 0) setState(() => _currentStep--);
@@ -247,7 +250,7 @@ class _ManualTripPlannerPageState extends State<ManualTripPlannerPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Destinations disponibles pour "${_selectedCategory}" :', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text('Destinations disponibles pour "$_selectedCategory" :', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
         ...destinations.map((dest) => Card(
           margin: const EdgeInsets.only(bottom: 8),
@@ -288,8 +291,11 @@ class _ManualTripPlannerPageState extends State<ManualTripPlannerPage> {
               selected: isSelected,
               onSelected: (selected) {
                 setState(() {
-                  if (selected) _selectedActivities.add(activity['name']);
-                  else _selectedActivities.remove(activity['name']);
+                  if (selected) {
+                    _selectedActivities.add(activity['name']);
+                  } else {
+                    _selectedActivities.remove(activity['name']);
+                  }
                 });
               },
               avatar: _buildAvatar(activity['image'], activity['icon'], activity['color']),

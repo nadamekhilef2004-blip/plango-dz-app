@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../models/destination.dart';
-import '../utils/theme.dart';
 import '../screens/map_navigation_page.dart';
 import '../screens/virtual_tour_page.dart';
 import '../screens/destination_detail_page.dart';

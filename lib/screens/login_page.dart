@@ -407,9 +407,9 @@ class _LoginPageState extends State<LoginPage> {
                         color: Colors.white,
                       ),
                       onPressed: () => setState(() {
-                        if (isPassword)
+                        if (isPassword) {
                           _obscurePassword = !_obscurePassword;
-                        else if (isConfirmPassword)
+                        } else if (isConfirmPassword)
                           _obscureConfirmPassword = !_obscureConfirmPassword;
                       }),
                     )
