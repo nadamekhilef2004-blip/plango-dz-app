@@ -90,8 +90,4 @@ class RecommendationPage extends StatelessWidget {
 
     return allDestinations.take(5).toList();
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> 4b7ad39b7e8138d7e70f9fbadf5d6a44369d5561

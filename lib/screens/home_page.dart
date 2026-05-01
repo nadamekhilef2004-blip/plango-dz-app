@@ -1,23 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/destination.dart';
-import '../widgets/weather_widget.dart';
-import '../widgets/loading_widget.dart';
-import '../widgets/error_widget.dart';
-import '../widgets/modern_destination_card.dart';
 import '../utils/theme.dart';
 import 'trip_planner_page.dart';
 import 'favorites_page.dart';
 import 'destination_detail_page.dart';
 import 'login_page.dart';
 import 'ai_trip_planner.dart';
-import 'map_navigation_page.dart';
-import 'virtual_tour_page.dart';
-import 'recommendation_page.dart';
 import 'wilaya_detail_page.dart';
 import 'manual_trip_planner.dart';
 import 'recommendation_page.dart';
-
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});

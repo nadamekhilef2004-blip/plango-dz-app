@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'smart_trip_planner.dart';
 
 class TripPlannerPage extends StatefulWidget {
   const TripPlannerPage({super.key});
@@ -45,7 +44,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                     SizedBox(height: 12),
                     Text(
                       'Create Your Algerian Adventure',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                     SizedBox(height: 8),
                     Text(
@@ -170,50 +173,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                   ],
                 ),
               ),
-              
-              // ========== BOUTON SMART AI PLANNER ==========
-              const SizedBox(height: 16),
-              GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const SmartTripPlannerPage()),
-                  );
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFF2E7D32).withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF2E7D32).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Icon(Icons.auto_awesome, color: Color(0xFF2E7D32), size: 28),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Smart AI Planner', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2E7D32))),
-                            const SizedBox(height: 4),
-                            const Text('AI-powered itinerary with editing', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.arrow_forward_ios, color: Color(0xFF2E7D32), size: 16),
-                    ],
-                  ),
-                ),
-              ),
-              // ============================================
               
               const SizedBox(height: 32),
               

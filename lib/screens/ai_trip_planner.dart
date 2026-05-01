@@ -4,7 +4,9 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
-import 'dart:math';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
+import 'dart:io';
 import '../utils/theme.dart';
 import '../data/wilaya_data.dart';
 
@@ -31,14 +33,15 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
   int _duration = 3;
 
   // Étape 5 : Budget
-  String _budgetMode = 'auto';
+  String _budgetMode = 'auto'; // 'auto', 'manual', 'economy', 'luxury'
   int _manualBudget = 50000;
-  String _luxuryLevel = 'Moyen';
+  String _luxuryLevel = 'Moyen'; // 'Économique', 'Moyen', 'Luxe'
 
   // Résultat généré
   String _generatedItinerary = '';
   bool _isGenerating = false;
 
+  // Contrôleurs
   final TextEditingController _manualBudgetController = TextEditingController();
 
   @override
@@ -106,6 +109,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
 
             if (_selectedCategory.isNotEmpty) ...[
               const SizedBox(height: 24),
+              // Étape 2 : Wilaya
               const Text('2. Choisissez votre destination', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
               SizedBox(
@@ -160,6 +164,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
 
             if (_selectedWilaya != null) ...[
               const SizedBox(height: 24),
+              // Étape 3 : Activités
               const Text('3. Quelles activités souhaitez-vous ?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
               Wrap(
@@ -184,6 +189,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
                 }).toList(),
               ),
               const SizedBox(height: 16),
+              // Attractions supplémentaires (optionnel)
               const Text('Lieux d’intérêt disponibles :', style: TextStyle(fontSize: 12, color: Colors.grey)),
               Wrap(
                 spacing: 4,
@@ -191,6 +197,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
               ),
 
               const SizedBox(height: 24),
+              // Étape 4 : Durée
               const Text('4. Durée du séjour (jours)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
               Row(
@@ -219,6 +226,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
               ),
 
               const SizedBox(height: 24),
+              // Étape 5 : Budget
               const Text('5. Budget', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
               Row(
@@ -293,6 +301,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
               ],
 
               const SizedBox(height: 32),
+              // Bouton Générer
               SizedBox(
                 width: double.infinity,
                 height: 55,
@@ -366,80 +375,58 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
       _generatedItinerary = '';
     });
 
-    // Calcul du budget total
+    // Calcul du budget si auto
     int totalBudget = 0;
     if (_budgetMode == 'auto') {
       totalBudget = (_selectedWilaya!.defaultPricePerDay * _duration).round();
     } else if (_budgetMode == 'manual') {
       totalBudget = _manualBudget;
     } else {
+      // economy / moyen / luxe
       double multiplier = _luxuryLevel == 'Économique' ? 0.7 : (_luxuryLevel == 'Luxe' ? 1.8 : 1.2);
       totalBudget = (_selectedWilaya!.defaultPricePerDay * _duration * multiplier).round();
     }
 
-    // Génération intelligente de l'itinéraire
-    String itinerary = _generateSmartItinerary(
+    // Génération locale (car OpenAI nécessite clé, on utilise un template enrichi)
+    String itinerary = _generateLocalItinerary(
       wilaya: _selectedWilaya!,
       duration: _duration,
       activities: _selectedActivities,
       budget: totalBudget,
     );
-
     setState(() {
       _generatedItinerary = itinerary;
       _isGenerating = false;
     });
   }
 
-  String _generateSmartItinerary({
+  String _generateLocalItinerary({
     required WilayaData wilaya,
     required int duration,
     required List<String> activities,
     required int budget,
   }) {
-    final random = Random();
-    final selectedActs = activities.isNotEmpty ? activities : wilaya.activities;
-    final shuffledActs = List.of(selectedActs)..shuffle(random);
-    final shuffledAttractions = List.of(wilaya.attractions)..shuffle(random);
-    final shuffledRestaurants = List.of(wilaya.restaurants)..shuffle(random);
-
-    final dailyBudget = (budget / duration).round();
-
     StringBuffer sb = StringBuffer();
-<<<<<<< HEAD
-
-    sb.writeln("## 🌍 Voyage à ${wilaya.name}\n");
-    sb.writeln("**Durée :** $duration jours");
-    sb.writeln("**Budget total :** ${NumberFormat('#,##0').format(budget)} DZD\n");
-    sb.writeln("**Budget journalier estimé :** ${NumberFormat('#,##0').format(dailyBudget)} DZD/jour\n");
-    sb.writeln("---\n");
-=======
     sb.writeln('##  Itinéraire à ${wilaya.name} ($duration jours)\n');
     sb.writeln('**Budget total estimé :** ${NumberFormat('#,##0').format(budget)} DZD\n');
     sb.writeln('**Activités sélectionnées :** ${activities.isEmpty ? 'Toutes les activités suggérées' : activities.join(', ')}\n');
     sb.writeln('---\n');
->>>>>>> 4b7ad39b7e8138d7e70f9fbadf5d6a44369d5561
 
     for (int day = 1; day <= duration; day++) {
-      final act = shuffledActs[(day - 1) % shuffledActs.length];
-      final attr = shuffledAttractions[(day - 1) % shuffledAttractions.length];
-      final rest = shuffledRestaurants[(day - 1) % shuffledRestaurants.length];
-
-      sb.writeln("### 📅 Jour $day\n");
-      sb.writeln("- **Matin :** $act");
-      sb.writeln("- **Déjeuner :** $rest (cuisine locale)");
-      sb.writeln("- **Après-midi :** Visite de $attr");
-      sb.writeln("- **Dîner :** $rest\n");
+      sb.writeln('### Jour $day');
+      sb.writeln('');
+      // Choix d’activités cyclique
+      int actIndex = (day - 1) % wilaya.activities.length;
+      String mainActivity = activities.isNotEmpty && day <= activities.length
+          ? activities[day - 1]
+          : wilaya.activities[actIndex];
+      sb.writeln('- **Matin :** $mainActivity');
+      sb.writeln('- **Déjeuner :** ${wilaya.restaurants[day % wilaya.restaurants.length]} (cuisine locale)');
+      sb.writeln('- **Après-midi :** Visite de ${wilaya.attractions[(day * 2) % wilaya.attractions.length]}');
+      sb.writeln('- **Dîner & Hébergement :** ${wilaya.restaurants[(day + 1) % wilaya.restaurants.length]} – Hôtel recommandé (à partir de ${(budget / duration * 0.4).round()} DA/nuit)');
+      sb.writeln('');
     }
 
-<<<<<<< HEAD
-    sb.writeln("## 💡 Conseils pratiques\n");
-    sb.writeln("- **Transport** : Sur place, taxis ou location de voiture recommandée.");
-    sb.writeln("- **Météo** : Consultez la météo avant votre départ.");
-    sb.writeln("- **Argent** : Prévoyez des espèces pour les petits commerces.");
-    sb.writeln("- **Langue** : Le français est largement compris.\n");
-    sb.writeln("✨ **Profitez de votre séjour à ${wilaya.name} !**");
-=======
     sb.writeln('##  Conseils pratiques');
     sb.writeln('- **Transport :** Sur place, taxis ou location de voiture recommandée.');
     sb.writeln('- **Météo :** Consultez la météo avant votre départ (saison ${wilaya.categories.contains('Plage') ? 'idéale en été' : 'printemps/automne'}).');
@@ -447,7 +434,6 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
     sb.writeln('- **Langue :** Le français est largement compris.');
     sb.writeln('');
     sb.writeln(' Profitez de votre séjour à ${wilaya.name} !');
->>>>>>> 4b7ad39b7e8138d7e70f9fbadf5d6a44369d5561
 
     return sb.toString();
   }
@@ -455,6 +441,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage> {
   Future<void> _generateAndSharePDF() async {
     if (_generatedItinerary.isEmpty) return;
 
+    // Utiliser PdfGoogleFonts pour le web (pas besoin de fichiers locaux)
     final poppinsRegular = await PdfGoogleFonts.poppinsRegular();
     final poppinsBold = await PdfGoogleFonts.poppinsBold();
 
