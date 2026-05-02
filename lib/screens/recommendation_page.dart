@@ -59,7 +59,7 @@ class RecommendationPage extends StatelessWidget {
                         MaterialPageRoute(
                           builder: (context) => WilayaDetailPage(
                             name: dest.name,
-                            icon: '🏛️',
+                            icon: Icons.museum,
                             color: AppTheme.primaryColor,
                             imagePath: dest.imageUrl,
                             description: dest.description,
