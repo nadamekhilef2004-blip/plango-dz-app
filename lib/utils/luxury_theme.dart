@@ -48,6 +48,7 @@ class LuxTheme {
   // ── Border radius ─────────────────────────────────────────────
   static const radius4  = BorderRadius.all(Radius.circular(4));
   static const radius10 = BorderRadius.all(Radius.circular(10));
+  static const radius12 = BorderRadius.all(Radius.circular(12));
   static const radius14 = BorderRadius.all(Radius.circular(14));
   static const radius20 = BorderRadius.all(Radius.circular(20));
   static const radius28 = BorderRadius.all(Radius.circular(28));

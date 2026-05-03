@@ -8,8 +8,9 @@ import '../utils/luxury_theme.dart';
 import '../data/wilaya_data.dart';
 
 // ═══════════════════════════════════════════════════════════════
-//  AI TRIP PLANNER  —  Luxury Edition
+//  AI TRIP PLANNER  —  Professional Luxury Edition
 // ═══════════════════════════════════════════════════════════════
+
 class AITripPlannerPage extends StatefulWidget {
   const AITripPlannerPage({super.key});
   @override
@@ -19,398 +20,922 @@ class AITripPlannerPage extends StatefulWidget {
 class _AITripPlannerPageState extends State<AITripPlannerPage>
     with TickerProviderStateMixin {
 
-  String _category = '';
+  // ── State ──────────────────────────────────────────────────
+  int     _currentStep   = 0;   // 0-4 (5 steps total)
+  String  _category      = '';
   WilayaData? _wilaya;
   List<String> _activities = [];
-  int _days = 3;
-  String _budgetMode  = 'auto';
-  String _luxLevel    = 'Mid-range';
-  int    _manualBudget= 50000;
-  String _result      = '';
-  bool   _generating  = false;
-  List<WilayaData> _wilayas = [];
+  int     _days          = 3;
+  String  _budgetMode    = 'mid';  // 'budget' | 'mid' | 'luxury' | 'custom'
+  int     _customBudget  = 50000;
 
-  final _budgetCtrl = TextEditingController(text: '50000');
+  // ── Result ────────────────────────────────────────────────
+  bool _generating = false;
+  bool _generated  = false;
+  List<_ItineraryDay> _itineraryDays = [];
+  int  _totalBudget = 0;
+
+  // ── Typing animation ─────────────────────────────────────
+  late final AnimationController _typingCtrl;
+  String _typingText = '';
+  int    _typingIndex = 0;
+  final String _typingMessage = 'Crafting your personalised itinerary…';
+
+  // ── Progress bar animation ────────────────────────────────
+  late final AnimationController _progressCtrl;
+  late final Animation<double>   _progressAnim;
+
+  // ── Step reveal animations ────────────────────────────────
+  late final AnimationController _stepCtrl;
+  late final Animation<double>   _stepFade;
+  late final Animation<Offset>   _stepSlide;
+
+  // ── Result card animations ────────────────────────────────
+  late final AnimationController _resultCtrl;
+  late final Animation<double>   _resultFade;
+  late final Animation<Offset>   _resultSlide;
+
+  // ── Page controller (step pages) ─────────────────────────
+  final PageController _pageCtrl = PageController();
+
+  // ── Data ─────────────────────────────────────────────────
   final List<String> _cats = ['Beach', 'Mountain', 'Sahara', 'Culture'];
+  final Map<String, IconData> _catIcons = {
+    'Beach':    Icons.beach_access_rounded,
+    'Mountain': Icons.terrain_rounded,
+    'Sahara':   Icons.wb_sunny_rounded,
+    'Culture':  Icons.museum_rounded,
+  };
+  final Map<String, String> _catDesc = {
+    'Beach':    'Coast, sun & sea',
+    'Mountain': 'Peaks & nature',
+    'Sahara':   'Dunes & starlit skies',
+    'Culture':  'History & heritage',
+  };
+  List<WilayaData> _wilayas = [];
+  final _budgetCtrl = TextEditingController(text: '50000');
+  final ScrollController _scrollCtrl = ScrollController();
 
-  // Step reveal controllers
-  late final List<AnimationController> _stepCtrls;
-  late final List<Animation<double>>   _stepFades;
-  late final List<Animation<Offset>>   _stepSlides;
+  static const int _totalSteps = 5;
 
   @override
   void initState() {
     super.initState();
-    _stepCtrls = List.generate(7, (_) =>
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 450)));
-    _stepFades = _stepCtrls.map((c) => CurvedAnimation(parent: c, curve: Curves.easeOut)).toList();
-    _stepSlides = _stepCtrls.map((c) =>
-      Tween<Offset>(begin: const Offset(0, 0.16), end: Offset.zero)
-          .animate(CurvedAnimation(parent: c, curve: Curves.easeOut))).toList();
-    _stepCtrls[0].forward();
+
+    _typingCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 50))
+      ..addListener(_onTypingTick);
+
+    _progressCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+    _progressAnim = CurvedAnimation(parent: _progressCtrl, curve: Curves.easeOut);
+
+    _stepCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _stepFade  = CurvedAnimation(parent: _stepCtrl, curve: Curves.easeOut);
+    _stepSlide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _stepCtrl, curve: Curves.easeOut));
+
+    _resultCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _resultFade  = CurvedAnimation(parent: _resultCtrl, curve: Curves.easeOut);
+    _resultSlide = Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _resultCtrl, curve: Curves.easeOut));
+
+    _stepCtrl.forward();
+    _progressCtrl.animateTo(0);
   }
 
   @override
-  void dispose() { for (final c in _stepCtrls) c.dispose(); _budgetCtrl.dispose(); super.dispose(); }
+  void dispose() {
+    _typingCtrl.dispose();
+    _progressCtrl.dispose();
+    _stepCtrl.dispose();
+    _resultCtrl.dispose();
+    _pageCtrl.dispose();
+    _budgetCtrl.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
 
-  void _reveal(int step) {
-    if (step < _stepCtrls.length && !_stepCtrls[step].isCompleted) {
-      Future.delayed(const Duration(milliseconds: 100), () { if (mounted) _stepCtrls[step].forward(); });
+  // ── Typing animation tick ─────────────────────────────────
+  void _onTypingTick() {
+    if (_typingIndex < _typingMessage.length) {
+      setState(() {
+        _typingText = _typingMessage.substring(0, _typingIndex + 1);
+        _typingIndex++;
+      });
+      if (_typingIndex < _typingMessage.length) {
+        Future.delayed(const Duration(milliseconds: 38), () {
+          if (mounted && _generating) _typingCtrl.forward(from: 0);
+        });
+      }
     }
   }
 
-  void _resetFrom(int step) {
-    for (int i = step; i < _stepCtrls.length; i++) _stepCtrls[i].reset();
+  // ── Step navigation ───────────────────────────────────────
+  void _goToStep(int step) {
+    if (step < 0 || step >= _totalSteps) return;
+    setState(() => _currentStep = step);
+    _stepCtrl.reset();
+    _stepCtrl.forward();
+    _progressCtrl.animateTo(step / (_totalSteps - 1));
+    _pageCtrl.animateToPage(step, duration: const Duration(milliseconds: 380), curve: Curves.easeInOut);
   }
 
+  bool get _canAdvance {
+    switch (_currentStep) {
+      case 0: return _category.isNotEmpty;
+      case 1: return _wilaya != null;
+      case 2: return true; // activities optional
+      case 3: return true; // duration always valid
+      case 4: return true; // budget always valid
+      default: return false;
+    }
+  }
+
+  // ── Generate ──────────────────────────────────────────────
+  Future<void> _generate() async {
+    if (_wilaya == null) return;
+
+    // Scroll to top smoothly
+    _scrollCtrl.animateTo(0, duration: const Duration(milliseconds: 400), curve: Curves.easeOut);
+
+    setState(() {
+      _generating  = true;
+      _generated   = false;
+      _typingText  = '';
+      _typingIndex = 0;
+      _itineraryDays = [];
+    });
+
+    // Start typing animation
+    _typingCtrl.forward(from: 0);
+
+    // Calculate budget
+    double multiplier = _budgetMode == 'budget' ? 0.7 : (_budgetMode == 'luxury' ? 2.0 : 1.2);
+    _totalBudget = _budgetMode == 'custom'
+        ? _customBudget
+        : (_wilaya!.defaultPricePerDay * _days * multiplier).round();
+
+    // Simulate AI generation delay
+    await Future.delayed(const Duration(milliseconds: 2200));
+
+    // Build itinerary data
+    final days = <_ItineraryDay>[];
+    for (int d = 1; d <= _days; d++) {
+      final acts = _activities.isNotEmpty && d <= _activities.length
+          ? _activities[d - 1]
+          : _wilaya!.activities[(d - 1) % _wilaya!.activities.length];
+      days.add(_ItineraryDay(
+        dayNumber:   d,
+        morning:     acts,
+        lunch:       _wilaya!.restaurants[d % _wilaya!.restaurants.length],
+        afternoon:   'Explore ${_wilaya!.attractions[(d * 2) % _wilaya!.attractions.length]}',
+        evening:     _wilaya!.restaurants[(d + 1) % _wilaya!.restaurants.length],
+        hotel:       'Recommended hotel from ${NumberFormat('#,##0').format((_totalBudget / _days * 0.38).round())} DZD/night',
+        budgetDay:   (_totalBudget / _days).round(),
+      ));
+    }
+
+    if (mounted) {
+      setState(() {
+        _generating    = false;
+        _generated     = true;
+        _itineraryDays = days;
+      });
+      _resultCtrl.reset();
+      _resultCtrl.forward();
+    }
+  }
+
+  // ── Export ─────────────────────────────────────────────────
+  Future<void> _exportPdf() async {
+    final bold    = await PdfGoogleFonts.poppinsBold();
+    final regular = await PdfGoogleFonts.poppinsRegular();
+    final pdf     = pw.Document();
+
+    pdf.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: pw.EdgeInsets.all(36),
+      build: (_) => [
+        pw.Text('PlanGo DZ — Luxury Itinerary', style: pw.TextStyle(font: bold, fontSize: 24, color: PdfColors.brown800)),
+        pw.SizedBox(height: 4),
+        pw.Text('${_wilaya!.name}  •  $_days days  •  ${NumberFormat('#,##0').format(_totalBudget)} DZD',
+            style: pw.TextStyle(font: regular, fontSize: 12, color: PdfColors.grey700)),
+        pw.SizedBox(height: 4),
+        pw.Text('Generated: ${DateFormat('dd MMMM yyyy').format(DateTime.now())}',
+            style: pw.TextStyle(font: regular, fontSize: 10, color: PdfColors.grey)),
+        pw.Divider(color: PdfColors.brown200),
+        pw.SizedBox(height: 12),
+        ..._itineraryDays.map((day) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text('DAY ${day.dayNumber}', style: pw.TextStyle(font: bold, fontSize: 14, color: PdfColors.brown800)),
+            pw.SizedBox(height: 6),
+            pw.Text('☀  Morning:   ${day.morning}',   style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.Text('🍽  Lunch:     ${day.lunch}',    style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.Text('🗺  Afternoon: ${day.afternoon}', style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.Text('🌙  Evening:   ${day.evening}',  style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.Text('🏨  Hotel:     ${day.hotel}',    style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.SizedBox(height: 14),
+          ],
+        )),
+        pw.Divider(color: PdfColors.brown200),
+        pw.SizedBox(height: 8),
+        pw.Text('Tips & Reminders', style: pw.TextStyle(font: bold, fontSize: 13, color: PdfColors.brown800)),
+        pw.SizedBox(height: 6),
+        pw.Text('• Transport: Taxi or rental car recommended.', style: pw.TextStyle(font: regular, fontSize: 11)),
+        pw.Text('• Currency: Carry cash for local markets.', style: pw.TextStyle(font: regular, fontSize: 11)),
+        pw.Text('• Best time: ${_wilaya!.categories.contains('Beach') ? 'Jun–Sep' : 'Mar–May / Sep–Nov'}', style: pw.TextStyle(font: regular, fontSize: 11)),
+        pw.SizedBox(height: 20),
+        pw.Center(child: pw.Text('PlanGo DZ — Your Luxury Travel Companion', style: pw.TextStyle(font: regular, fontSize: 10, color: PdfColors.grey))),
+      ],
+    ));
+
+    await Printing.sharePdf(bytes: await pdf.save(), filename: 'plango_${_wilaya!.name}_itinerary.pdf');
+  }
+
+  void _share() {
+    final sb = StringBuffer();
+    sb.writeln('✦ My Trip to ${_wilaya!.name} ($_days days)');
+    sb.writeln('Budget: ${NumberFormat('#,##0').format(_totalBudget)} DZD\n');
+    for (final d in _itineraryDays) {
+      sb.writeln('Day ${d.dayNumber}:');
+      sb.writeln('  ☀ ${d.morning}');
+      sb.writeln('  🍽 ${d.lunch}');
+      sb.writeln('  🗺 ${d.afternoon}');
+      sb.writeln('  🌙 ${d.evening}\n');
+    }
+    sb.writeln('Generated with PlanGo DZ');
+    Share.share(sb.toString(), subject: 'My Trip to ${_wilaya!.name}');
+  }
+
+  // ══════════════════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: LuxTheme.sand,
-      body: CustomScrollView(
-        slivers: [
-          // ── App bar ──
-          SliverAppBar(
-            pinned: true,
-            backgroundColor: LuxTheme.cream,
-            surfaceTintColor: Colors.transparent,
-            elevation: 0,
-            leading: Padding(
-              padding: const EdgeInsets.all(10),
-              child: PressScale(
-                onTap: () => Navigator.pop(context),
+      body: Column(children: [
+        _buildAppBar(),
+        _buildProgressBar(),
+        Expanded(
+          child: _generated
+              ? _buildResult()
+              : PageView(
+                  controller: _pageCtrl,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    _buildStep0(),
+                    _buildStep1(),
+                    _buildStep2(),
+                    _buildStep3(),
+                    _buildStep4(),
+                  ],
+                ),
+        ),
+        if (!_generated && !_generating) _buildBottomBar(),
+      ]),
+    );
+  }
+
+  // ── App Bar ───────────────────────────────────────────────
+  Widget _buildAppBar() {
+    return Container(
+      color: LuxTheme.cream,
+      child: SafeArea(
+        bottom: false,
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(children: [
+              PressScale(
+                onTap: () {
+                  if (_generated) {
+                    setState(() { _generated = false; _currentStep = 4; _goToStep(4); });
+                  } else if (_currentStep > 0) {
+                    _goToStep(_currentStep - 1);
+                  } else {
+                    Navigator.pop(context);
+                  }
+                },
                 child: Container(
+                  width: 40, height: 40,
                   decoration: BoxDecoration(color: LuxTheme.sand, borderRadius: LuxTheme.radius10),
                   child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: LuxTheme.mocha),
                 ),
               ),
-            ),
-            title: RichText(text: const TextSpan(children: [
-              TextSpan(text: 'AI ', style: TextStyle(fontFamily: 'Georgia', fontSize: 20, fontWeight: FontWeight.w700, color: LuxTheme.gold)),
-              TextSpan(text: 'Planner', style: TextStyle(fontFamily: 'Georgia', fontSize: 20, fontWeight: FontWeight.w700, color: LuxTheme.espresso)),
-            ])),
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(1),
-              child: Container(height: 1, decoration: const BoxDecoration(gradient: LuxTheme.goldGrad)),
-            ),
-          ),
-
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
-            sliver: SliverList(delegate: SliverChildListDelegate([
-
-              // ── Intro ──
-              FadeSlideIn(fade: _stepFades[0], slide: _stepSlides[0], child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  GoldBadge(label: 'AI POWERED'),
-                  const SizedBox(height: 12),
-                  const Text('Craft Your\nPerfect Journey', style: LuxTheme.displayMd),
-                  const SizedBox(height: 8),
-                  Text('Answer a few questions and receive a curated itinerary.', style: LuxTheme.body),
-                  const SizedBox(height: 28),
-                  const GoldDivider(),
-                ],
+              const Expanded(child: Center(
+                child: Text('AI Planner', style: TextStyle(fontFamily: 'Georgia', fontSize: 20, fontWeight: FontWeight.w700, color: LuxTheme.espresso)),
               )),
-
-              const SizedBox(height: 24),
-
-              // ── Step 1 ──
-              FadeSlideIn(fade: _stepFades[0], slide: _stepSlides[0],
-                child: _StepCard(number: 1, title: 'What type of experience?', child: Wrap(
-                  spacing: 8, runSpacing: 8,
-                  children: _cats.map((cat) {
-                    final icons = {'Beach': Icons.beach_access_rounded, 'Mountain': Icons.terrain_rounded, 'Sahara': Icons.wb_sunny_rounded, 'Culture': Icons.museum_rounded};
-                    return _LuxChip(
-                      label: cat, icon: icons[cat]!, selected: _category == cat,
-                      onTap: () {
-                        setState(() { _category = cat; _wilaya = null; _activities.clear(); _wilayas = allWilayas.where((w) => w.categories.contains(cat)).toList(); });
-                        _resetFrom(1);
-                        _reveal(1);
-                      },
-                    );
-                  }).toList(),
-                )),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(gradient: const LinearGradient(colors: [LuxTheme.gold, LuxTheme.goldLight]), borderRadius: LuxTheme.radiusPill),
+                child: const Text('AI', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1)),
               ),
-
-              const SizedBox(height: 16),
-
-              // ── Step 2 ──
-              if (_category.isNotEmpty) ...[
-                FadeSlideIn(fade: _stepFades[1], slide: _stepSlides[1],
-                  child: _StepCard(number: 2, title: 'Choose your destination', child: SizedBox(
-                    height: 120,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _wilayas.length,
-                      itemBuilder: (_, i) {
-                        final w = _wilayas[i];
-                        final sel = _wilaya == w;
-                        return GestureDetector(
-                          onTap: () { setState(() { _wilaya = w; _activities.clear(); }); _resetFrom(2); _reveal(2); },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 220),
-                            width: 100,
-                            margin: const EdgeInsets.only(right: 10),
-                            decoration: BoxDecoration(
-                              color: sel ? LuxTheme.terracotta.withOpacity(0.08) : LuxTheme.cream,
-                              borderRadius: LuxTheme.radius14,
-                              border: Border.all(color: sel ? LuxTheme.terracotta : LuxTheme.sandDark, width: sel ? 2 : 1),
-                              boxShadow: sel ? LuxTheme.terrShadow : LuxTheme.cardShadow,
-                            ),
-                            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                              ClipRRect(
-                                borderRadius: LuxTheme.radius10,
-                                child: Image.asset(w.imagePath, width: 54, height: 54, fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(width: 54, height: 54,
-                                    decoration: const BoxDecoration(gradient: LuxTheme.terracottaGrad, borderRadius: LuxTheme.radius10),
-                                    child: const Icon(Icons.location_city_rounded, color: Colors.white54, size: 24)),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(w.name, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: sel ? LuxTheme.terracotta : LuxTheme.espresso), textAlign: TextAlign.center),
-                            ]),
-                          ),
-                        );
-                      },
-                    ),
-                  )),
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              // ── Step 3 ──
-              if (_wilaya != null) ...[
-                FadeSlideIn(fade: _stepFades[2], slide: _stepSlides[2],
-                  child: _StepCard(number: 3, title: 'Which activities?', child: Wrap(
-                    spacing: 8, runSpacing: 8,
-                    children: _wilaya!.activities.map((a) => _LuxChip(
-                      label: a, icon: Icons.check_circle_outline_rounded,
-                      selected: _activities.contains(a),
-                      onTap: () { setState(() => _activities.contains(a) ? _activities.remove(a) : _activities.add(a)); _reveal(3); },
-                    )).toList(),
-                  )),
-                ),
-                const SizedBox(height: 16),
-
-                // ── Step 4 ──
-                FadeSlideIn(fade: _stepFades[3], slide: _stepSlides[3],
-                  child: _StepCard(number: 4, title: 'Duration of stay', child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _CircleBtn(icon: Icons.remove_rounded, onTap: () { if (_days > 1) setState(() => _days--); _reveal(4); }),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Column(children: [
-                          Text('$_days', style: const TextStyle(fontFamily: 'Georgia', fontSize: 42, fontWeight: FontWeight.w700, color: LuxTheme.espresso)),
-                          Text(_days == 1 ? 'day' : 'days', style: LuxTheme.caption),
-                        ]),
-                      ),
-                      _CircleBtn(icon: Icons.add_rounded, onTap: () { if (_days < 21) setState(() => _days++); _reveal(4); }, filled: true),
-                    ],
-                  )),
-                ),
-                const SizedBox(height: 16),
-
-                // ── Step 5 ──
-                FadeSlideIn(fade: _stepFades[4], slide: _stepSlides[4],
-                  child: _StepCard(number: 5, title: 'Budget preference', child: Column(children: [
-                    Row(children: [
-                      Expanded(child: _LuxChip(label: 'Auto estimate', icon: Icons.auto_fix_high_rounded, selected: _budgetMode == 'auto', onTap: () => setState(() => _budgetMode = 'auto'))),
-                      const SizedBox(width: 8),
-                      Expanded(child: _LuxChip(label: 'Custom amount', icon: Icons.edit_rounded, selected: _budgetMode == 'manual', onTap: () => setState(() => _budgetMode = 'manual'))),
-                    ]),
-                    const SizedBox(height: 10),
-                    Row(children: [
-                      Expanded(child: _LuxChip(label: 'Budget',  icon: Icons.savings_rounded,          selected: _luxLevel == 'Budget',    onTap: () => setState(() { _budgetMode = 'level'; _luxLevel = 'Budget'; }))),
-                      const SizedBox(width: 6),
-                      Expanded(child: _LuxChip(label: 'Mid',     icon: Icons.hotel_rounded,             selected: _luxLevel == 'Mid-range', onTap: () => setState(() { _budgetMode = 'level'; _luxLevel = 'Mid-range'; }))),
-                      const SizedBox(width: 6),
-                      Expanded(child: _LuxChip(label: 'Luxury',  icon: Icons.diamond_outlined,          selected: _luxLevel == 'Luxury',    onTap: () => setState(() { _budgetMode = 'level'; _luxLevel = 'Luxury'; }))),
-                    ]),
-                    if (_budgetMode == 'manual') ...[
-                      const SizedBox(height: 14),
-                      LuxTextField(hint: 'Total budget (DZD)', prefixIcon: Icons.account_balance_wallet_outlined, controller: _budgetCtrl, keyboardType: TextInputType.number, onChanged: (v) => _manualBudget = int.tryParse(v) ?? 0),
-                    ],
-                  ])),
-                ),
-
-                const SizedBox(height: 32),
-
-                // ── Generate button ──
-                FadeSlideIn(fade: _stepFades[4], slide: _stepSlides[4],
-                  child: SizedBox(width: double.infinity, child: LuxButton(
-                    label: 'Generate My Itinerary',
-                    icon: Icons.auto_awesome_rounded,
-                    isLoading: _generating,
-                    onTap: _generating ? null : _generate,
-                  )),
-                ),
-              ],
-
-              const SizedBox(height: 24),
-
-              // ── Result ──
-              if (_result.isNotEmpty)
-                FadeSlideIn(fade: _stepFades[5], slide: _stepSlides[5],
-                  child: _ResultCard(result: _result, wilayaName: _wilaya?.name ?? '', onPdf: _pdf, onShare: _share),
-                ),
-
-            ])),
+            ]),
           ),
-        ],
+        ]),
       ),
     );
   }
 
-  Future<void> _generate() async {
-    if (_wilaya == null) return;
-    setState(() { _generating = true; _result = ''; });
-
-    int budget = 0;
-    if (_budgetMode == 'auto') {
-      budget = (_wilaya!.defaultPricePerDay * _days).round();
-    } else if (_budgetMode == 'manual') {
-      budget = _manualBudget;
-    } else {
-      final m = _luxLevel == 'Budget' ? 0.7 : (_luxLevel == 'Luxury' ? 2.0 : 1.2);
-      budget = (_wilaya!.defaultPricePerDay * _days * m).round();
-    }
-
-    await Future.delayed(const Duration(milliseconds: 1000));
-
-    final sb = StringBuffer();
-    sb.writeln('✦ ITINERARY — ${_wilaya!.name.toUpperCase()} ($_days Days)\n');
-    sb.writeln('Estimated Budget: ${NumberFormat('#,##0').format(budget)} DZD');
-    sb.writeln('Level: $_luxLevel  |  Activities: ${_activities.isEmpty ? 'All suggested' : _activities.join(', ')}\n');
-    sb.writeln('─────────────────────────────────\n');
-    for (int day = 1; day <= _days; day++) {
-      final act  = _activities.isNotEmpty && day <= _activities.length ? _activities[day - 1] : _wilaya!.activities[(day - 1) % _wilaya!.activities.length];
-      final rest = _wilaya!.restaurants[day % _wilaya!.restaurants.length];
-      final attr = _wilaya!.attractions[(day * 2) % _wilaya!.attractions.length];
-      sb.writeln('DAY $day');
-      sb.writeln('  ☀  Morning: $act');
-      sb.writeln('  🍽  Lunch: $rest');
-      sb.writeln('  🗺  Afternoon: Explore $attr');
-      sb.writeln('  🌙  Evening: ${_wilaya!.restaurants[(day + 1) % _wilaya!.restaurants.length]}');
-      sb.writeln('  🏨  Hotel: from ${(budget / _days * 0.4).round()} DZD/night\n');
-    }
-    sb.writeln('─────────────────────────────────');
-    sb.writeln('\n✦ TIPS');
-    sb.writeln('• Transport: Taxi or rental car recommended');
-    sb.writeln('• Weather: ${_wilaya!.categories.contains('Beach') ? 'Best in summer (Jun–Sep)' : 'Spring & autumn are ideal'}');
-    sb.writeln('• Currency: Carry cash for local markets');
-    sb.writeln('\nBon voyage in ${_wilaya!.name}!');
-
-    setState(() { _result = sb.toString(); _generating = false; });
-    _reveal(5);
-  }
-
-  Future<void> _pdf() async {
-    if (_result.isEmpty) return;
-    final regular = await PdfGoogleFonts.poppinsRegular();
-    final bold    = await PdfGoogleFonts.poppinsBold();
-    final pdf     = pw.Document();
-    pdf.addPage(pw.MultiPage(
-      pageFormat: PdfPageFormat.a4,
-      margin: pw.EdgeInsets.all(32),
-      build: (_) => [
-        pw.Text('PlanGo DZ — Luxury Itinerary', style: pw.TextStyle(font: bold, fontSize: 22, color: PdfColors.brown800)),
-        pw.SizedBox(height: 6),
-        pw.Text('Generated: ${DateFormat('dd MMMM yyyy').format(DateTime.now())}', style: pw.TextStyle(font: regular, fontSize: 11, color: PdfColors.grey)),
-        pw.SizedBox(height: 20),
-        pw.Text(_result, style: pw.TextStyle(font: regular, fontSize: 11)),
-      ],
-    ));
-    await Printing.sharePdf(bytes: await pdf.save(), filename: 'plango_${_wilaya?.name}.pdf');
-  }
-
-  void _share() => Share.share(_result, subject: 'My PlanGo DZ Itinerary');
-}
-
-// ── Step Card ─────────────────────────────────────────────────────────────────
-class _StepCard extends StatelessWidget {
-  final int number;
-  final String title;
-  final Widget child;
-  const _StepCard({required this.number, required this.title, required this.child});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(color: LuxTheme.cream, borderRadius: LuxTheme.radius20, boxShadow: LuxTheme.cardShadow),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        Container(
-          width: 30, height: 30,
-          decoration: BoxDecoration(gradient: const LinearGradient(colors: [LuxTheme.gold, LuxTheme.goldLight]), borderRadius: LuxTheme.radius10),
-          child: Center(child: Text('$number', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800))),
+  // ── Progress bar ──────────────────────────────────────────
+  Widget _buildProgressBar() {
+    return Container(
+      color: LuxTheme.cream,
+      child: Column(children: [
+        Container(height: 1, decoration: const BoxDecoration(gradient: LuxTheme.goldGrad)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 14, 24, 16),
+          child: Column(children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: List.generate(_totalSteps, (i) => _StepDot(index: i, current: _currentStep, done: _generated)),
+            ),
+            const SizedBox(height: 10),
+            // Progress track
+            ClipRRect(
+              borderRadius: LuxTheme.radiusPill,
+              child: AnimatedBuilder(
+                animation: _progressAnim,
+                builder: (_, __) => LinearProgressIndicator(
+                  value: _generated ? 1.0 : (_totalSteps <= 1 ? 0 : _currentStep / (_totalSteps - 1)),
+                  minHeight: 4,
+                  backgroundColor: LuxTheme.sandDark,
+                  valueColor: const AlwaysStoppedAnimation<Color>(LuxTheme.gold),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text(_generated ? 'Your itinerary is ready ✦' : _stepLabel(_currentStep),
+                  style: LuxTheme.caption.copyWith(color: LuxTheme.mocha)),
+              Text(_generated ? '$_days days · ${NumberFormat('#,##0').format(_totalBudget)} DZD' : 'Step ${_currentStep + 1} of $_totalSteps',
+                  style: LuxTheme.caption),
+            ]),
+          ]),
         ),
-        const SizedBox(width: 12),
-        Text(title, style: LuxTheme.titleMd),
       ]),
-      const SizedBox(height: 16),
-      child,
-    ]),
-  );
-}
-
-// ── Lux Chip ──────────────────────────────────────────────────────────────────
-class _LuxChip extends StatefulWidget {
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-  const _LuxChip({required this.label, required this.icon, required this.selected, required this.onTap});
-  @override
-  State<_LuxChip> createState() => _LuxChipState();
-}
-class _LuxChipState extends State<_LuxChip> with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  late final Animation<double> _s;
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 100));
-    _s = Tween<double>(begin: 1.0, end: 0.91).animate(_c);
+    );
   }
-  @override void dispose() { _c.dispose(); super.dispose(); }
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTapDown: (_) => _c.forward(),
-    onTapCancel: () => _c.reverse(),
-    onTap: () { _c.reverse(); widget.onTap(); },
-    child: ScaleTransition(scale: _s,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          gradient: widget.selected ? const LinearGradient(colors: [LuxTheme.terracotta, LuxTheme.terracottaL]) : null,
-          color: widget.selected ? null : LuxTheme.sand,
-          borderRadius: LuxTheme.radiusPill,
-          border: Border.all(color: widget.selected ? LuxTheme.terracottaL : LuxTheme.sandDark),
-          boxShadow: widget.selected ? LuxTheme.terrShadow : [],
+
+  String _stepLabel(int step) {
+    const labels = ['Experience type', 'Destination', 'Activities', 'Duration', 'Budget'];
+    return step < labels.length ? labels[step] : '';
+  }
+
+  // ── Bottom navigation bar ─────────────────────────────────
+  Widget _buildBottomBar() {
+    final isLast = _currentStep == _totalSteps - 1;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+      decoration: BoxDecoration(
+        color: LuxTheme.cream,
+        border: Border(top: BorderSide(color: LuxTheme.sandDark)),
+        boxShadow: [BoxShadow(color: LuxTheme.espresso.withOpacity(0.07), blurRadius: 16, offset: const Offset(0, -4))],
+      ),
+      child: Row(children: [
+        if (_currentStep > 0) ...[
+          PressScale(
+            onTap: () => _goToStep(_currentStep - 1),
+            child: Container(
+              height: 54,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              decoration: BoxDecoration(
+                color: LuxTheme.sand,
+                borderRadius: LuxTheme.radius14,
+                border: Border.all(color: LuxTheme.sandDark),
+              ),
+              child: const Row(children: [
+                Icon(Icons.arrow_back_rounded, size: 18, color: LuxTheme.mocha),
+                SizedBox(width: 6),
+                Text('Back', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: LuxTheme.mocha)),
+              ]),
+            ),
+          ),
+          const SizedBox(width: 12),
+        ],
+        Expanded(
+          child: isLast
+              ? LuxButton(label: 'Generate Itinerary', icon: Icons.auto_awesome_rounded, onTap: _canAdvance ? _generate : null)
+              : PressScale(
+                  onTap: _canAdvance ? () => _goToStep(_currentStep + 1) : () {},
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    height: 54,
+                    decoration: BoxDecoration(
+                      gradient: _canAdvance ? const LinearGradient(colors: [LuxTheme.terracotta, LuxTheme.terracottaL]) : null,
+                      color: _canAdvance ? null : LuxTheme.sandDark,
+                      borderRadius: LuxTheme.radius14,
+                      boxShadow: _canAdvance ? LuxTheme.terrShadow : [],
+                    ),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Text('Continue', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _canAdvance ? Colors.white : LuxTheme.latte)),
+                      const SizedBox(width: 8),
+                      Icon(Icons.arrow_forward_rounded, size: 18, color: _canAdvance ? Colors.white : LuxTheme.latte),
+                    ]),
+                  ),
+                ),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(widget.icon, size: 14, color: widget.selected ? Colors.white : LuxTheme.latte),
-          const SizedBox(width: 6),
-          Text(widget.label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: widget.selected ? Colors.white : LuxTheme.mocha)),
-        ]),
+      ]),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  STEP PAGES
+  // ══════════════════════════════════════════════════════════
+
+  Widget _stepWrapper(Widget child) => FadeTransition(
+    opacity: _stepFade,
+    child: SlideTransition(
+      position: _stepSlide,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+        child: child,
       ),
     ),
   );
+
+  // ── Step 0 : Category ─────────────────────────────────────
+  Widget _buildStep0() => _stepWrapper(Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      GoldBadge(label: 'STEP 1 OF 5'),
+      const SizedBox(height: 14),
+      const Text('What kind of\nexperience?', style: LuxTheme.displayMd),
+      const SizedBox(height: 8),
+      Text('Choose the type of trip that calls to you.', style: LuxTheme.body),
+      const SizedBox(height: 32),
+      ...List.generate(_cats.length, (i) {
+        final cat = _cats[i];
+        final selected = _category == cat;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: PressScale(
+            onTap: () => setState(() => _category = cat),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: selected ? LuxTheme.terracotta : LuxTheme.cream,
+                borderRadius: LuxTheme.radius20,
+                border: Border.all(color: selected ? LuxTheme.terracottaL : LuxTheme.sandDark, width: selected ? 0 : 1.2),
+                boxShadow: selected ? LuxTheme.terrShadow : LuxTheme.cardShadow,
+              ),
+              child: Row(children: [
+                Container(
+                  width: 52, height: 52,
+                  decoration: BoxDecoration(
+                    color: selected ? Colors.white.withOpacity(0.2) : LuxTheme.sand,
+                    borderRadius: LuxTheme.radius14,
+                  ),
+                  child: Icon(_catIcons[cat]!, size: 26, color: selected ? Colors.white : LuxTheme.terracotta),
+                ),
+                const SizedBox(width: 16),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(cat, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: selected ? Colors.white : LuxTheme.espresso)),
+                  const SizedBox(height: 3),
+                  Text(_catDesc[cat]!, style: TextStyle(fontSize: 13, color: selected ? Colors.white70 : LuxTheme.latte)),
+                ])),
+                Icon(selected ? Icons.check_circle_rounded : Icons.circle_outlined,
+                    color: selected ? Colors.white : LuxTheme.sandDark, size: 22),
+              ]),
+            ),
+          ),
+        );
+      }),
+    ],
+  ));
+
+  // ── Step 1 : Wilaya ───────────────────────────────────────
+  Widget _buildStep1() {
+    _wilayas = allWilayas.where((w) => w.categories.contains(_category)).toList();
+    return _stepWrapper(Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GoldBadge(label: 'STEP 2 OF 5'),
+        const SizedBox(height: 14),
+        const Text('Choose your\ndestination', style: LuxTheme.displayMd),
+        const SizedBox(height: 8),
+        Text('Select the wilaya you want to explore.', style: LuxTheme.body),
+        const SizedBox(height: 28),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 14, crossAxisSpacing: 14, childAspectRatio: 0.88),
+          itemCount: _wilayas.length,
+          itemBuilder: (_, i) {
+            final w   = _wilayas[i];
+            final sel = _wilaya == w;
+            return PressScale(
+              onTap: () => setState(() => _wilaya = w),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                decoration: BoxDecoration(
+                  color: LuxTheme.cream,
+                  borderRadius: LuxTheme.radius20,
+                  border: Border.all(color: sel ? LuxTheme.gold : Colors.transparent, width: 2.2),
+                  boxShadow: sel ? LuxTheme.goldShadow : LuxTheme.cardShadow,
+                ),
+                child: Stack(children: [
+                  // Image
+                  ClipRRect(
+                    borderRadius: LuxTheme.radius20,
+                    child: Image.asset(w.imagePath, width: double.infinity, height: double.infinity, fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        decoration: const BoxDecoration(gradient: LuxTheme.terracottaGrad, borderRadius: LuxTheme.radius20),
+                        child: const Icon(Icons.landscape_rounded, color: Colors.white38, size: 48),
+                      ),
+                    ),
+                  ),
+                  // Overlay
+                  ClipRRect(
+                    borderRadius: LuxTheme.radius20,
+                    child: const DecoratedBox(
+                      decoration: BoxDecoration(gradient: LuxTheme.heroOverlay),
+                      position: DecorationPosition.foreground,
+                    ),
+                  ),
+                  // Content
+                  Positioned(left: 12, right: 12, bottom: 12, child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(w.name, style: const TextStyle(fontFamily: 'Georgia', fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
+                      if (sel) ...[
+                        const SizedBox(height: 4),
+                        const Row(children: [
+                          Icon(Icons.check_circle_rounded, color: LuxTheme.gold, size: 14),
+                          SizedBox(width: 4),
+                          Text('Selected', style: TextStyle(color: LuxTheme.gold, fontSize: 11, fontWeight: FontWeight.w700)),
+                        ]),
+                      ],
+                    ],
+                  )),
+                ]),
+              ),
+            );
+          },
+        ),
+      ],
+    ));
+  }
+
+  // ── Step 2 : Activities ───────────────────────────────────
+  Widget _buildStep2() {
+    final acts = _wilaya?.activities ?? [];
+    return _stepWrapper(Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GoldBadge(label: 'STEP 3 OF 5'),
+        const SizedBox(height: 14),
+        const Text('Preferred\nactivities', style: LuxTheme.displayMd),
+        const SizedBox(height: 8),
+        Text('Pick what excites you. Skip to include everything.', style: LuxTheme.body),
+        const SizedBox(height: 28),
+        const GoldDivider(label: 'AVAILABLE ACTIVITIES'),
+        const SizedBox(height: 20),
+        ...acts.map((act) {
+          final sel = _activities.contains(act);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: PressScale(
+              onTap: () => setState(() => sel ? _activities.remove(act) : _activities.add(act)),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: sel ? LuxTheme.gold.withOpacity(0.08) : LuxTheme.cream,
+                  borderRadius: LuxTheme.radius14,
+                  border: Border.all(color: sel ? LuxTheme.gold : LuxTheme.sandDark, width: sel ? 1.5 : 1),
+                  boxShadow: LuxTheme.cardShadow,
+                ),
+                child: Row(children: [
+                  Container(
+                    width: 38, height: 38,
+                    decoration: BoxDecoration(
+                      color: sel ? LuxTheme.gold : LuxTheme.sand,
+                      borderRadius: LuxTheme.radius10,
+                    ),
+                    child: Icon(sel ? Icons.check_rounded : Icons.add_rounded, color: sel ? Colors.white : LuxTheme.latte, size: 20),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(child: Text(act, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: sel ? LuxTheme.espresso : LuxTheme.mocha))),
+                ]),
+              ),
+            ),
+          );
+        }),
+        if (acts.isEmpty)
+          Center(child: Padding(
+            padding: const EdgeInsets.all(40),
+            child: Text('Select a destination first', style: LuxTheme.body),
+          )),
+        if (_activities.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(gradient: const LinearGradient(colors: [LuxTheme.gold, LuxTheme.goldLight]), borderRadius: LuxTheme.radius14),
+            child: Row(children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 10),
+              Text('${_activities.length} activit${_activities.length == 1 ? 'y' : 'ies'} selected', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+            ]),
+          ),
+        ],
+      ],
+    ));
+  }
+
+  // ── Step 3 : Duration ─────────────────────────────────────
+  Widget _buildStep3() => _stepWrapper(Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      GoldBadge(label: 'STEP 4 OF 5'),
+      const SizedBox(height: 14),
+      const Text('How long is\nyour stay?', style: LuxTheme.displayMd),
+      const SizedBox(height: 8),
+      Text('Choose the number of nights for your trip.', style: LuxTheme.body),
+      const SizedBox(height: 48),
+      // Duration picker
+      Center(child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          _BigRoundBtn(icon: Icons.remove_rounded, onTap: () { if (_days > 1) setState(() => _days--); }),
+          const SizedBox(width: 36),
+          Column(children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+              child: Text('$_days', key: ValueKey(_days),
+                  style: const TextStyle(fontFamily: 'Georgia', fontSize: 72, fontWeight: FontWeight.w700, color: LuxTheme.espresso, height: 1)),
+            ),
+            Text(_days == 1 ? 'day' : 'days', style: LuxTheme.caption.copyWith(fontSize: 14)),
+          ]),
+          const SizedBox(width: 36),
+          _BigRoundBtn(icon: Icons.add_rounded, onTap: () { if (_days < 21) setState(() => _days++); }, filled: true),
+        ]),
+        const SizedBox(height: 48),
+        const GoldDivider(label: 'QUICK SELECT'),
+        const SizedBox(height: 20),
+        // Quick select chips
+        Wrap(spacing: 10, runSpacing: 10, children: [3, 5, 7, 10, 14].map((d) {
+          final sel = _days == d;
+          return PressScale(
+            onTap: () => setState(() => _days = d),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: sel ? const LinearGradient(colors: [LuxTheme.terracotta, LuxTheme.terracottaL]) : null,
+                color: sel ? null : LuxTheme.cream,
+                borderRadius: LuxTheme.radiusPill,
+                border: Border.all(color: sel ? Colors.transparent : LuxTheme.sandDark),
+                boxShadow: sel ? LuxTheme.terrShadow : LuxTheme.cardShadow,
+              ),
+              child: Text('$d ${d == 1 ? 'day' : 'days'}',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: sel ? Colors.white : LuxTheme.mocha)),
+            ),
+          );
+        }).toList()),
+      ])),
+    ],
+  ));
+
+  // ── Step 4 : Budget ───────────────────────────────────────
+  Widget _buildStep4() {
+    final est = _wilaya != null ? (_wilaya!.defaultPricePerDay * _days).round() : 0;
+    final budgets = [
+      {'key': 'budget',  'label': 'Budget',    'sub': 'Essential & affordable',  'icon': Icons.savings_rounded,     'mult': 0.7},
+      {'key': 'mid',     'label': 'Mid-range', 'sub': 'Comfort & good value',    'icon': Icons.hotel_rounded,       'mult': 1.2},
+      {'key': 'luxury',  'label': 'Luxury',    'sub': 'Premium experiences',     'icon': Icons.diamond_rounded,     'mult': 2.0},
+      {'key': 'custom',  'label': 'Custom',    'sub': 'Enter your own amount',   'icon': Icons.edit_rounded,        'mult': 1.0},
+    ];
+    return _stepWrapper(Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GoldBadge(label: 'STEP 5 OF 5'),
+        const SizedBox(height: 14),
+        const Text('Budget\npreference', style: LuxTheme.displayMd),
+        const SizedBox(height: 8),
+        Text('We\'ll tailor recommendations to your budget.', style: LuxTheme.body),
+        const SizedBox(height: 28),
+        ...budgets.map((b) {
+          final key  = b['key'] as String;
+          final mult = b['mult'] as double;
+          final sel  = _budgetMode == key;
+          final amount = key == 'custom' ? _customBudget : (est * mult).round();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: PressScale(
+              onTap: () => setState(() => _budgetMode = key),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: sel ? LuxTheme.terracotta : LuxTheme.cream,
+                  borderRadius: LuxTheme.radius20,
+                  border: Border.all(color: sel ? Colors.transparent : LuxTheme.sandDark, width: 1.2),
+                  boxShadow: sel ? LuxTheme.terrShadow : LuxTheme.cardShadow,
+                ),
+                child: Row(children: [
+                  Container(
+                    width: 46, height: 46,
+                    decoration: BoxDecoration(
+                      color: sel ? Colors.white.withOpacity(0.2) : LuxTheme.sand,
+                      borderRadius: LuxTheme.radius12,
+                    ),
+                    child: Icon(b['icon'] as IconData, size: 22, color: sel ? Colors.white : LuxTheme.terracotta),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(b['label'] as String, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: sel ? Colors.white : LuxTheme.espresso)),
+                    Text(b['sub'] as String, style: TextStyle(fontSize: 12, color: sel ? Colors.white70 : LuxTheme.latte)),
+                  ])),
+                  if (key != 'custom') ...[
+                    Text('~${NumberFormat('#,##0').format(amount)} DZD',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: sel ? Colors.white : LuxTheme.gold)),
+                  ],
+                  const SizedBox(width: 8),
+                  Icon(sel ? Icons.check_circle_rounded : Icons.circle_outlined,
+                      color: sel ? Colors.white : LuxTheme.sandDark, size: 20),
+                ]),
+              ),
+            ),
+          );
+        }),
+        if (_budgetMode == 'custom') ...[
+          const SizedBox(height: 8),
+          LuxTextField(
+            hint: 'Enter total budget (DZD)',
+            prefixIcon: Icons.account_balance_wallet_rounded,
+            controller: _budgetCtrl,
+            keyboardType: TextInputType.number,
+            onChanged: (v) => setState(() => _customBudget = int.tryParse(v) ?? 50000),
+          ),
+        ],
+      ],
+    ));
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  RESULT VIEW
+  // ══════════════════════════════════════════════════════════
+  Widget _buildResult() {
+    return SingleChildScrollView(
+      controller: _scrollCtrl,
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 32),
+      child: _generating
+          ? _buildGeneratingState()
+          : FadeTransition(opacity: _resultFade, child: SlideTransition(position: _resultSlide, child: _buildItineraryView())),
+    );
+  }
+
+  Widget _buildGeneratingState() {
+    return SizedBox(
+      height: 400,
+      child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        // Pulsing logo
+        TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.92, end: 1.08),
+          duration: const Duration(milliseconds: 800),
+          builder: (_, v, child) => Transform.scale(scale: v, child: child),
+          child: Container(
+            width: 80, height: 80,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [LuxTheme.gold, LuxTheme.goldLight]),
+              shape: BoxShape.circle,
+              boxShadow: LuxTheme.goldShadow,
+            ),
+            child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 36),
+          ),
+        ),
+        const SizedBox(height: 28),
+        Text(_typingText.isEmpty ? ' ' : _typingText,
+            style: LuxTheme.titleMd.copyWith(color: LuxTheme.mocha), textAlign: TextAlign.center),
+        const SizedBox(height: 8),
+        Text('Analysing $_category preferences…', style: LuxTheme.caption),
+        const SizedBox(height: 32),
+        SizedBox(width: 180, child: ClipRRect(
+          borderRadius: LuxTheme.radiusPill,
+          child: LinearProgressIndicator(
+            minHeight: 4,
+            backgroundColor: LuxTheme.sandDark,
+            valueColor: const AlwaysStoppedAnimation<Color>(LuxTheme.gold),
+          ),
+        )),
+      ])),
+    );
+  }
+
+  Widget _buildItineraryView() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // ── Summary banner ──
+      Container(
+        margin: const EdgeInsets.fromLTRB(0, 0, 0, 0),
+        child: Stack(children: [
+          // Hero image
+          SizedBox(height: 220, width: double.infinity,
+            child: Image.asset(_wilaya!.imagePath, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(height: 220, decoration: const BoxDecoration(gradient: LuxTheme.terracottaGrad)),
+            ),
+          ),
+          // Overlay
+          Container(height: 220, decoration: const BoxDecoration(gradient: LuxTheme.heroOverlay)),
+          // Content
+          Positioned(left: 24, right: 24, bottom: 24, child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const GoldBadge(label: 'YOUR ITINERARY'),
+              const SizedBox(height: 10),
+              Text(_wilaya!.name, style: const TextStyle(fontFamily: 'Georgia', fontSize: 32, fontWeight: FontWeight.w700, color: Colors.white)),
+              const SizedBox(height: 10),
+              Row(children: [
+                _SummaryChip(icon: Icons.calendar_today_rounded, label: '$_days ${_days == 1 ? 'day' : 'days'}'),
+                const SizedBox(width: 10),
+                _SummaryChip(icon: Icons.account_balance_wallet_rounded, label: '${NumberFormat('#,##0').format(_totalBudget)} DZD'),
+                const SizedBox(width: 10),
+                _SummaryChip(icon: Icons.star_rounded, label: _budgetMode == 'luxury' ? 'Luxury' : (_budgetMode == 'budget' ? 'Budget' : 'Mid')),
+              ]),
+            ],
+          )),
+          // Action buttons top-right
+          Positioned(top: 16, right: 16, child: Row(children: [
+            _HeroActionBtn(icon: Icons.picture_as_pdf_rounded, onTap: _exportPdf),
+            const SizedBox(width: 8),
+            _HeroActionBtn(icon: Icons.share_rounded, onTap: _share),
+          ])),
+        ]),
+      ),
+
+      // ── Day cards ──
+      Padding(
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const GoldDivider(label: 'DAY BY DAY'),
+          const SizedBox(height: 24),
+          ..._itineraryDays.map((day) => _DayCard(day: day, totalDays: _days)),
+          const SizedBox(height: 28),
+          // Tips section
+          const GoldDivider(label: 'TRAVEL TIPS'),
+          const SizedBox(height: 20),
+          _TipCard(icon: Icons.directions_car_rounded, title: 'Transport', body: 'Taxi or rental car is recommended for maximum flexibility.'),
+          const SizedBox(height: 10),
+          _TipCard(icon: Icons.thermostat_rounded, title: 'Weather', body: _wilaya!.categories.contains('Beach') ? 'Best visited Jun–Sep for warm beaches.' : 'Spring (Mar–May) and autumn (Sep–Nov) offer ideal conditions.'),
+          const SizedBox(height: 10),
+          _TipCard(icon: Icons.payments_rounded, title: 'Currency', body: 'Carry cash — many local shops and markets are cash-only.'),
+          const SizedBox(height: 10),
+          _TipCard(icon: Icons.restaurant_rounded, title: 'Local Food', body: 'Must-try: ${_wilaya!.activities.take(2).join(' · ')}'),
+          const SizedBox(height: 32),
+          // Regenerate CTA
+          SizedBox(width: double.infinity, child: LuxButton(
+            label: 'Regenerate',
+            icon: Icons.refresh_rounded,
+            outlined: true,
+            onTap: () => setState(() { _generated = false; _currentStep = 0; _goToStep(0); }),
+          )),
+          const SizedBox(height: 12),
+          SizedBox(width: double.infinity, child: LuxButton(
+            label: 'Export as PDF',
+            icon: Icons.picture_as_pdf_rounded,
+            onTap: _exportPdf,
+          )),
+        ]),
+      ),
+    ]);
+  }
 }
 
-// ── Circle Button ─────────────────────────────────────────────────────────────
-class _CircleBtn extends StatefulWidget {
+// ══════════════════════════════════════════════════════════════
+//  SUB-WIDGETS
+// ══════════════════════════════════════════════════════════════
+
+class _StepDot extends StatelessWidget {
+  final int index, current;
+  final bool done;
+  const _StepDot({required this.index, required this.current, required this.done});
+
+  @override
+  Widget build(BuildContext context) {
+    final active   = index == current && !done;
+    final complete = index < current || done;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      width: active ? 28 : 10,
+      height: 10,
+      decoration: BoxDecoration(
+        gradient: complete || active ? const LinearGradient(colors: [LuxTheme.gold, LuxTheme.goldLight]) : null,
+        color: complete || active ? null : LuxTheme.sandDark,
+        borderRadius: LuxTheme.radiusPill,
+      ),
+    );
+  }
+}
+
+class _BigRoundBtn extends StatefulWidget {
   final IconData icon;
   final VoidCallback onTap;
   final bool filled;
-  const _CircleBtn({required this.icon, required this.onTap, this.filled = false});
+  const _BigRoundBtn({required this.icon, required this.onTap, this.filled = false});
   @override
-  State<_CircleBtn> createState() => _CircleBtnState();
+  State<_BigRoundBtn> createState() => _BigRoundBtnState();
 }
-class _CircleBtnState extends State<_CircleBtn> with SingleTickerProviderStateMixin {
+class _BigRoundBtnState extends State<_BigRoundBtn> with SingleTickerProviderStateMixin {
   late final AnimationController _c;
   late final Animation<double> _s;
   @override
@@ -427,7 +952,7 @@ class _CircleBtnState extends State<_CircleBtn> with SingleTickerProviderStateMi
     onTap: () { _c.reverse(); widget.onTap(); },
     child: ScaleTransition(scale: _s,
       child: Container(
-        width: 50, height: 50,
+        width: 56, height: 56,
         decoration: BoxDecoration(
           gradient: widget.filled ? const LinearGradient(colors: [LuxTheme.terracotta, LuxTheme.terracottaL]) : null,
           color: widget.filled ? null : LuxTheme.cream,
@@ -435,75 +960,167 @@ class _CircleBtnState extends State<_CircleBtn> with SingleTickerProviderStateMi
           border: Border.all(color: widget.filled ? Colors.transparent : LuxTheme.sandDark),
           boxShadow: widget.filled ? LuxTheme.terrShadow : LuxTheme.cardShadow,
         ),
-        child: Icon(widget.icon, size: 22, color: widget.filled ? Colors.white : LuxTheme.terracotta),
+        child: Icon(widget.icon, size: 24, color: widget.filled ? Colors.white : LuxTheme.terracotta),
       ),
     ),
   );
 }
 
-// ── Result Card ───────────────────────────────────────────────────────────────
-class _ResultCard extends StatelessWidget {
-  final String result, wilayaName;
-  final VoidCallback onPdf, onShare;
-  const _ResultCard({required this.result, required this.wilayaName, required this.onPdf, required this.onShare});
-
+class _SummaryChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _SummaryChip({required this.icon, required this.label});
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      color: LuxTheme.cream, borderRadius: LuxTheme.radius20, boxShadow: LuxTheme.cardShadow,
-      border: Border.all(color: LuxTheme.gold.withOpacity(0.3), width: 1.2),
-    ),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(gradient: const LinearGradient(colors: [LuxTheme.gold, LuxTheme.goldLight]), borderRadius: LuxTheme.radius10),
-          child: const Icon(Icons.map_rounded, color: Colors.white, size: 18),
-        ),
-        const SizedBox(width: 10),
-        const Expanded(child: Text('Your Curated Itinerary', style: LuxTheme.titleMd)),
-        _ActionBtn(icon: Icons.picture_as_pdf_rounded, color: LuxTheme.terracotta, onTap: onPdf),
-        const SizedBox(width: 8),
-        _ActionBtn(icon: Icons.share_rounded, color: LuxTheme.gold, onTap: onShare),
-      ]),
-      const SizedBox(height: 16),
-      Container(height: 1, decoration: const BoxDecoration(gradient: LuxTheme.goldGrad)),
-      const SizedBox(height: 16),
-      SelectableText(result, style: LuxTheme.body.copyWith(fontSize: 13, color: LuxTheme.espresso)),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), borderRadius: LuxTheme.radiusPill),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 12, color: LuxTheme.goldLight),
+      const SizedBox(width: 5),
+      Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
     ]),
   );
 }
 
-class _ActionBtn extends StatefulWidget {
+class _HeroActionBtn extends StatelessWidget {
   final IconData icon;
-  final Color color;
   final VoidCallback onTap;
-  const _ActionBtn({required this.icon, required this.color, required this.onTap});
+  const _HeroActionBtn({required this.icon, required this.onTap});
   @override
-  State<_ActionBtn> createState() => _ActionBtnState();
-}
-class _ActionBtnState extends State<_ActionBtn> with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  late final Animation<double> _s;
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 100));
-    _s = Tween<double>(begin: 1.0, end: 0.85).animate(_c);
-  }
-  @override void dispose() { _c.dispose(); super.dispose(); }
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTapDown: (_) => _c.forward(),
-    onTapCancel: () => _c.reverse(),
-    onTap: () { _c.reverse(); widget.onTap(); },
-    child: ScaleTransition(scale: _s,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: widget.color.withOpacity(0.1), borderRadius: LuxTheme.radius10),
-        child: Icon(widget.icon, color: widget.color, size: 20),
-      ),
+  Widget build(BuildContext context) => PressScale(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.all(9),
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), shape: BoxShape.circle),
+      child: Icon(icon, color: Colors.white, size: 20),
     ),
   );
+}
+
+class _DayCard extends StatefulWidget {
+  final _ItineraryDay day;
+  final int totalDays;
+  const _DayCard({required this.day, required this.totalDays});
+  @override
+  State<_DayCard> createState() => _DayCardState();
+}
+class _DayCardState extends State<_DayCard> {
+  bool _expanded = true;
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.day;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: LuxTheme.cream,
+          borderRadius: LuxTheme.radius20,
+          boxShadow: LuxTheme.cardShadow,
+        ),
+        child: Column(children: [
+          // Header
+          PressScale(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              child: Row(children: [
+                Container(
+                  width: 42, height: 42,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [LuxTheme.terracotta, LuxTheme.terracottaL]),
+                    borderRadius: LuxTheme.radius12,
+                  ),
+                  child: Center(child: Text('${d.dayNumber}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16, fontFamily: 'Georgia'))),
+                ),
+                const SizedBox(width: 14),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Day ${d.dayNumber}', style: LuxTheme.titleMd),
+                  Text('~${NumberFormat('#,##0').format(d.budgetDay)} DZD', style: LuxTheme.caption),
+                ])),
+                Icon(_expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, color: LuxTheme.latte),
+              ]),
+            ),
+          ),
+
+          // Gold divider
+          if (_expanded) Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Container(height: 1, decoration: const BoxDecoration(gradient: LuxTheme.goldGrad)),
+          ),
+
+          // Time slots
+          if (_expanded) Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: Column(children: [
+              _TimeSlot(icon: Icons.wb_sunny_rounded,     color: LuxTheme.gold,        label: 'Morning',   value: d.morning),
+              _TimeSlot(icon: Icons.restaurant_rounded,   color: LuxTheme.terracotta,  label: 'Lunch',     value: d.lunch),
+              _TimeSlot(icon: Icons.explore_rounded,      color: Color(0xFF2E86AB),    label: 'Afternoon', value: d.afternoon),
+              _TimeSlot(icon: Icons.nightlight_round,     color: LuxTheme.mocha,       label: 'Evening',   value: d.evening),
+              _TimeSlot(icon: Icons.bed_rounded,          color: LuxTheme.latte,       label: 'Hotel',     value: d.hotel, isLast: true),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _TimeSlot extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label, value;
+  final bool isLast;
+  const _TimeSlot({required this.icon, required this.color, required this.label, required this.value, this.isLast = false});
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(
+        width: 34, height: 34,
+        decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: LuxTheme.radius10),
+        child: Icon(icon, size: 16, color: color),
+      ),
+      const SizedBox(width: 12),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: LuxTheme.caption),
+        const SizedBox(height: 2),
+        Text(value, style: LuxTheme.body.copyWith(color: LuxTheme.espresso, fontSize: 13, height: 1.4)),
+      ])),
+    ]),
+  );
+}
+
+class _TipCard extends StatelessWidget {
+  final IconData icon;
+  final String title, body;
+  const _TipCard({required this.icon, required this.title, required this.body});
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: LuxTheme.cream,
+      borderRadius: LuxTheme.radius14,
+      boxShadow: LuxTheme.cardShadow,
+    ),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(
+        width: 38, height: 38,
+        decoration: BoxDecoration(gradient: const LinearGradient(colors: [LuxTheme.gold, LuxTheme.goldLight]), borderRadius: LuxTheme.radius10),
+        child: Icon(icon, size: 18, color: Colors.white),
+      ),
+      const SizedBox(width: 14),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: LuxTheme.titleMd),
+        const SizedBox(height: 3),
+        Text(body, style: LuxTheme.body.copyWith(fontSize: 13)),
+      ])),
+    ]),
+  );
+}
+
+// ── Data model ────────────────────────────────────────────────
+class _ItineraryDay {
+  final int dayNumber, budgetDay;
+  final String morning, lunch, afternoon, evening, hotel;
+  const _ItineraryDay({required this.dayNumber, required this.morning, required this.lunch, required this.afternoon, required this.evening, required this.hotel, required this.budgetDay});
 }
