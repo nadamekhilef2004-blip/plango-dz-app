@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -20,13 +22,19 @@ class AITripPlannerPage extends StatefulWidget {
 class _AITripPlannerPageState extends State<AITripPlannerPage>
     with TickerProviderStateMixin {
 
+  // ══════════════════════════════════════════════════════════
+  //  ▶▶ PASTE YOUR API KEY HERE — KEEP IT PRIVATE ◀◀
+  // ══════════════════════════════════════════════════════════
+  static const String _apiKey = 'sk-abcdijkl1234uvwxabcdijkl1234uvwxabcdijkl';
+  // ══════════════════════════════════════════════════════════
+
   // ── State ──────────────────────────────────────────────────
-  int     _currentStep   = 0;   // 0-4 (5 steps total)
+  int     _currentStep   = 0;
   String  _category      = '';
   WilayaData? _wilaya;
   List<String> _activities = [];
   int     _days          = 3;
-  String  _budgetMode    = 'mid';  // 'budget' | 'mid' | 'luxury' | 'custom'
+  String  _budgetMode    = 'mid';
   int     _customBudget  = 50000;
 
   // ── Result ────────────────────────────────────────────────
@@ -55,7 +63,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
   late final Animation<double>   _resultFade;
   late final Animation<Offset>   _resultSlide;
 
-  // ── Page controller (step pages) ─────────────────────────
+  // ── Page controller ───────────────────────────────────────
   final PageController _pageCtrl = PageController();
 
   // ── Data ─────────────────────────────────────────────────
@@ -73,7 +81,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
     'Culture':  'History & heritage',
   };
   List<WilayaData> _wilayas = [];
-  final _budgetCtrl = TextEditingController(text: '50000');
+  final _budgetCtrl  = TextEditingController(text: '50000');
   final ScrollController _scrollCtrl = ScrollController();
 
   static const int _totalSteps = 5;
@@ -143,69 +151,143 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
     switch (_currentStep) {
       case 0: return _category.isNotEmpty;
       case 1: return _wilaya != null;
-      case 2: return true; // activities optional
-      case 3: return true; // duration always valid
-      case 4: return true; // budget always valid
+      case 2: return true;
+      case 3: return true;
+      case 4: return true;
       default: return false;
     }
   }
 
-  // ── Generate ──────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════
+  //  REAL AI GENERATE — calls Claude API
+  // ══════════════════════════════════════════════════════════
   Future<void> _generate() async {
     if (_wilaya == null) return;
 
-    // Scroll to top smoothly
     _scrollCtrl.animateTo(0, duration: const Duration(milliseconds: 400), curve: Curves.easeOut);
 
     setState(() {
-      _generating  = true;
-      _generated   = false;
-      _typingText  = '';
-      _typingIndex = 0;
+      _generating    = true;
+      _generated     = false;
+      _typingText    = '';
+      _typingIndex   = 0;
       _itineraryDays = [];
     });
 
-    // Start typing animation
     _typingCtrl.forward(from: 0);
 
-    // Calculate budget
+    // Calculate total budget
     double multiplier = _budgetMode == 'budget' ? 0.7 : (_budgetMode == 'luxury' ? 2.0 : 1.2);
     _totalBudget = _budgetMode == 'custom'
         ? _customBudget
         : (_wilaya!.defaultPricePerDay * _days * multiplier).round();
 
-    // Simulate AI generation delay
-    await Future.delayed(const Duration(milliseconds: 2200));
+    try {
+      final prompt = '''
+You are a professional Algerian travel planner. Create a detailed $_days-day itinerary for ${_wilaya!.name}, Algeria.
 
-    // Build itinerary data
-    final days = <_ItineraryDay>[];
-    for (int d = 1; d <= _days; d++) {
-      final acts = _activities.isNotEmpty && d <= _activities.length
-          ? _activities[d - 1]
-          : _wilaya!.activities[(d - 1) % _wilaya!.activities.length];
-      days.add(_ItineraryDay(
-        dayNumber:   d,
-        morning:     acts,
-        lunch:       _wilaya!.restaurants[d % _wilaya!.restaurants.length],
-        afternoon:   'Explore ${_wilaya!.attractions[(d * 2) % _wilaya!.attractions.length]}',
-        evening:     _wilaya!.restaurants[(d + 1) % _wilaya!.restaurants.length],
-        hotel:       'Recommended hotel from ${NumberFormat('#,##0').format((_totalBudget / _days * 0.38).round())} DZD/night',
-        budgetDay:   (_totalBudget / _days).round(),
-      ));
-    }
+Trip details:
+- Category: $_category
+- Duration: $_days days
+- Budget level: $_budgetMode
+- Total budget: ${NumberFormat('#,##0').format(_totalBudget)} DZD
+- Preferred activities: ${_activities.isEmpty ? 'any suitable activities for this destination' : _activities.join(', ')}
 
-    if (mounted) {
-      setState(() {
-        _generating    = false;
-        _generated     = true;
-        _itineraryDays = days;
-      });
-      _resultCtrl.reset();
-      _resultCtrl.forward();
+Important rules:
+- Day 1 morning must always be: arrival and hotel check-in
+- Last day evening must always be: farewell dinner and departure preparation
+- Use REAL local restaurant names from ${_wilaya!.name}
+- Use REAL attraction and landmark names from ${_wilaya!.name}
+- Hotel suggestion must match the $_budgetMode budget level
+- Each day tip must be a genuinely useful local insight
+- Be specific and descriptive, never generic
+
+Return ONLY a valid JSON array with no explanation, no markdown formatting, no code blocks — just raw JSON:
+[
+  {
+    "day": 1,
+    "morning": "detailed morning activity",
+    "lunch": "Restaurant name — short description of cuisine/dish",
+    "afternoon": "detailed afternoon activity",
+    "evening": "Restaurant name or evening activity description",
+    "hotel": "Hotel name — price range per night in DZD",
+    "tip": "One practical local tip for this day"
+  }
+]
+''';
+
+      final response = await http.post(
+        Uri.parse('https://api.anthropic.com/v1/messages'),
+        headers: {
+          'x-api-key': _apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: jsonEncode({
+          'model': 'claude-sonnet-4-6',
+          'max_tokens': 4000,
+          'messages': [
+            {'role': 'user', 'content': prompt}
+          ],
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final jsonResponse = jsonDecode(response.body);
+        String rawText = jsonResponse['content'][0]['text'];
+
+        // Strip markdown code blocks if Claude adds them
+        rawText = rawText
+            .replaceAll('```json', '')
+            .replaceAll('```', '')
+            .trim();
+
+        final List<dynamic> daysJson = jsonDecode(rawText);
+        final days = <_ItineraryDay>[];
+
+        for (final d in daysJson) {
+          days.add(_ItineraryDay(
+            dayNumber:  d['day'] as int,
+            morning:    d['morning'] as String,
+            lunch:      d['lunch'] as String,
+            afternoon:  d['afternoon'] as String,
+            evening:    d['evening'] as String,
+            hotel:      d['hotel'] as String,
+            budgetDay:  (_totalBudget / _days).round(),
+            tip:        d['tip'] as String? ?? '',
+          ));
+        }
+
+        if (mounted) {
+          setState(() {
+            _generating    = false;
+            _generated     = true;
+            _itineraryDays = days;
+          });
+          _resultCtrl.reset();
+          _resultCtrl.forward();
+        }
+
+      } else {
+        throw Exception('API error ${response.statusCode}: ${response.body}');
+      }
+
+    } catch (e) {
+      if (mounted) {
+        setState(() => _generating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),   // ← shows the REAL error now
+            backgroundColor: LuxTheme.terracotta,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 8), // long enough to read it
+          ),
+        );
+      }
     }
   }
 
-  // ── Export ─────────────────────────────────────────────────
+  // ── Export PDF ─────────────────────────────────────────────
   Future<void> _exportPdf() async {
     final bold    = await PdfGoogleFonts.poppinsBold();
     final regular = await PdfGoogleFonts.poppinsRegular();
@@ -213,7 +295,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
 
     pdf.addPage(pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
-      margin: pw.EdgeInsets.all(36),
+      margin: const pw.EdgeInsets.all(36),
       build: (_) => [
         pw.Text('PlanGo DZ — Luxury Itinerary', style: pw.TextStyle(font: bold, fontSize: 24, color: PdfColors.brown800)),
         pw.SizedBox(height: 4),
@@ -229,11 +311,13 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
           children: [
             pw.Text('DAY ${day.dayNumber}', style: pw.TextStyle(font: bold, fontSize: 14, color: PdfColors.brown800)),
             pw.SizedBox(height: 6),
-            pw.Text('☀  Morning:   ${day.morning}',   style: pw.TextStyle(font: regular, fontSize: 11)),
-            pw.Text('🍽  Lunch:     ${day.lunch}',    style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.Text('☀  Morning:   ${day.morning}',    style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.Text('🍽  Lunch:     ${day.lunch}',     style: pw.TextStyle(font: regular, fontSize: 11)),
             pw.Text('🗺  Afternoon: ${day.afternoon}', style: pw.TextStyle(font: regular, fontSize: 11)),
-            pw.Text('🌙  Evening:   ${day.evening}',  style: pw.TextStyle(font: regular, fontSize: 11)),
-            pw.Text('🏨  Hotel:     ${day.hotel}',    style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.Text('🌙  Evening:   ${day.evening}',   style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.Text('🏨  Hotel:     ${day.hotel}',     style: pw.TextStyle(font: regular, fontSize: 11)),
+            if (day.tip.isNotEmpty)
+              pw.Text('💡  Tip:       ${day.tip}',     style: pw.TextStyle(font: regular, fontSize: 11)),
             pw.SizedBox(height: 14),
           ],
         )),
@@ -241,9 +325,9 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
         pw.SizedBox(height: 8),
         pw.Text('Tips & Reminders', style: pw.TextStyle(font: bold, fontSize: 13, color: PdfColors.brown800)),
         pw.SizedBox(height: 6),
-        pw.Text('• Transport: Taxi or rental car recommended.', style: pw.TextStyle(font: regular, fontSize: 11)),
-        pw.Text('• Currency: Carry cash for local markets.', style: pw.TextStyle(font: regular, fontSize: 11)),
-        pw.Text('• Best time: ${_wilaya!.categories.contains('Beach') ? 'Jun–Sep' : 'Mar–May / Sep–Nov'}', style: pw.TextStyle(font: regular, fontSize: 11)),
+        pw.Text('• Transport: Taxi or rental car recommended.',                                                                   style: pw.TextStyle(font: regular, fontSize: 11)),
+        pw.Text('• Currency: Carry cash for local markets.',                                                                      style: pw.TextStyle(font: regular, fontSize: 11)),
+        pw.Text('• Best time: ${_wilaya!.categories.contains('Beach') ? 'Jun–Sep' : 'Mar–May / Sep–Nov'}',                       style: pw.TextStyle(font: regular, fontSize: 11)),
         pw.SizedBox(height: 20),
         pw.Center(child: pw.Text('PlanGo DZ — Your Luxury Travel Companion', style: pw.TextStyle(font: regular, fontSize: 10, color: PdfColors.grey))),
       ],
@@ -261,7 +345,9 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
       sb.writeln('  ☀ ${d.morning}');
       sb.writeln('  🍽 ${d.lunch}');
       sb.writeln('  🗺 ${d.afternoon}');
-      sb.writeln('  🌙 ${d.evening}\n');
+      sb.writeln('  🌙 ${d.evening}');
+      if (d.tip.isNotEmpty) sb.writeln('  💡 Tip: ${d.tip}');
+      sb.writeln();
     }
     sb.writeln('Generated with PlanGo DZ');
     Share.share(sb.toString(), subject: 'My Trip to ${_wilaya!.name}');
@@ -350,7 +436,6 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
               children: List.generate(_totalSteps, (i) => _StepDot(index: i, current: _currentStep, done: _generated)),
             ),
             const SizedBox(height: 10),
-            // Progress track
             ClipRRect(
               borderRadius: LuxTheme.radiusPill,
               child: AnimatedBuilder(
@@ -381,7 +466,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
     return step < labels.length ? labels[step] : '';
   }
 
-  // ── Bottom navigation bar ─────────────────────────────────
+  // ── Bottom bar ────────────────────────────────────────────
   Widget _buildBottomBar() {
     final isLast = _currentStep == _totalSteps - 1;
     return Container(
@@ -535,7 +620,6 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
                   boxShadow: sel ? LuxTheme.goldShadow : LuxTheme.cardShadow,
                 ),
                 child: Stack(children: [
-                  // Image
                   ClipRRect(
                     borderRadius: LuxTheme.radius20,
                     child: Image.asset(w.imagePath, width: double.infinity, height: double.infinity, fit: BoxFit.cover,
@@ -545,7 +629,6 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
                       ),
                     ),
                   ),
-                  // Overlay
                   ClipRRect(
                     borderRadius: LuxTheme.radius20,
                     child: const DecoratedBox(
@@ -553,7 +636,6 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
                       position: DecorationPosition.foreground,
                     ),
                   ),
-                  // Content
                   Positioned(left: 12, right: 12, bottom: 12, child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -635,7 +717,8 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
             child: Row(children: [
               const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
               const SizedBox(width: 10),
-              Text('${_activities.length} activit${_activities.length == 1 ? 'y' : 'ies'} selected', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+              Text('${_activities.length} activit${_activities.length == 1 ? 'y' : 'ies'} selected',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
             ]),
           ),
         ],
@@ -653,7 +736,6 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
       const SizedBox(height: 8),
       Text('Choose the number of nights for your trip.', style: LuxTheme.body),
       const SizedBox(height: 48),
-      // Duration picker
       Center(child: Column(children: [
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           _BigRoundBtn(icon: Icons.remove_rounded, onTap: () { if (_days > 1) setState(() => _days--); }),
@@ -673,7 +755,6 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
         const SizedBox(height: 48),
         const GoldDivider(label: 'QUICK SELECT'),
         const SizedBox(height: 20),
-        // Quick select chips
         Wrap(spacing: 10, runSpacing: 10, children: [3, 5, 7, 10, 14].map((d) {
           final sel = _days == d;
           return PressScale(
@@ -701,10 +782,10 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
   Widget _buildStep4() {
     final est = _wilaya != null ? (_wilaya!.defaultPricePerDay * _days).round() : 0;
     final budgets = [
-      {'key': 'budget',  'label': 'Budget',    'sub': 'Essential & affordable',  'icon': Icons.savings_rounded,     'mult': 0.7},
-      {'key': 'mid',     'label': 'Mid-range', 'sub': 'Comfort & good value',    'icon': Icons.hotel_rounded,       'mult': 1.2},
-      {'key': 'luxury',  'label': 'Luxury',    'sub': 'Premium experiences',     'icon': Icons.diamond_rounded,     'mult': 2.0},
-      {'key': 'custom',  'label': 'Custom',    'sub': 'Enter your own amount',   'icon': Icons.edit_rounded,        'mult': 1.0},
+      {'key': 'budget',  'label': 'Budget',    'sub': 'Essential & affordable',  'icon': Icons.savings_rounded,  'mult': 0.7},
+      {'key': 'mid',     'label': 'Mid-range', 'sub': 'Comfort & good value',    'icon': Icons.hotel_rounded,    'mult': 1.2},
+      {'key': 'luxury',  'label': 'Luxury',    'sub': 'Premium experiences',     'icon': Icons.diamond_rounded,  'mult': 2.0},
+      {'key': 'custom',  'label': 'Custom',    'sub': 'Enter your own amount',   'icon': Icons.edit_rounded,     'mult': 1.0},
     ];
     return _stepWrapper(Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -716,9 +797,9 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
         Text('We\'ll tailor recommendations to your budget.', style: LuxTheme.body),
         const SizedBox(height: 28),
         ...budgets.map((b) {
-          final key  = b['key'] as String;
-          final mult = b['mult'] as double;
-          final sel  = _budgetMode == key;
+          final key    = b['key'] as String;
+          final mult   = b['mult'] as double;
+          final sel    = _budgetMode == key;
           final amount = key == 'custom' ? _customBudget : (est * mult).round();
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -790,7 +871,6 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
     return SizedBox(
       height: 400,
       child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        // Pulsing logo
         TweenAnimationBuilder<double>(
           tween: Tween(begin: 0.92, end: 1.08),
           duration: const Duration(milliseconds: 800),
@@ -813,10 +893,10 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
         const SizedBox(height: 32),
         SizedBox(width: 180, child: ClipRRect(
           borderRadius: LuxTheme.radiusPill,
-          child: LinearProgressIndicator(
+          child: const LinearProgressIndicator(
             minHeight: 4,
             backgroundColor: LuxTheme.sandDark,
-            valueColor: const AlwaysStoppedAnimation<Color>(LuxTheme.gold),
+            valueColor: AlwaysStoppedAnimation<Color>(LuxTheme.gold),
           ),
         )),
       ])),
@@ -825,45 +905,35 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
 
   Widget _buildItineraryView() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      // ── Summary banner ──
-      Container(
-        margin: const EdgeInsets.fromLTRB(0, 0, 0, 0),
-        child: Stack(children: [
-          // Hero image
-          SizedBox(height: 220, width: double.infinity,
-            child: Image.asset(_wilaya!.imagePath, fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(height: 220, decoration: const BoxDecoration(gradient: LuxTheme.terracottaGrad)),
-            ),
+      Stack(children: [
+        SizedBox(height: 220, width: double.infinity,
+          child: Image.asset(_wilaya!.imagePath, fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(height: 220, decoration: const BoxDecoration(gradient: LuxTheme.terracottaGrad)),
           ),
-          // Overlay
-          Container(height: 220, decoration: const BoxDecoration(gradient: LuxTheme.heroOverlay)),
-          // Content
-          Positioned(left: 24, right: 24, bottom: 24, child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const GoldBadge(label: 'YOUR ITINERARY'),
-              const SizedBox(height: 10),
-              Text(_wilaya!.name, style: const TextStyle(fontFamily: 'Georgia', fontSize: 32, fontWeight: FontWeight.w700, color: Colors.white)),
-              const SizedBox(height: 10),
-              Row(children: [
-                _SummaryChip(icon: Icons.calendar_today_rounded, label: '$_days ${_days == 1 ? 'day' : 'days'}'),
-                const SizedBox(width: 10),
-                _SummaryChip(icon: Icons.account_balance_wallet_rounded, label: '${NumberFormat('#,##0').format(_totalBudget)} DZD'),
-                const SizedBox(width: 10),
-                _SummaryChip(icon: Icons.star_rounded, label: _budgetMode == 'luxury' ? 'Luxury' : (_budgetMode == 'budget' ? 'Budget' : 'Mid')),
-              ]),
-            ],
-          )),
-          // Action buttons top-right
-          Positioned(top: 16, right: 16, child: Row(children: [
-            _HeroActionBtn(icon: Icons.picture_as_pdf_rounded, onTap: _exportPdf),
-            const SizedBox(width: 8),
-            _HeroActionBtn(icon: Icons.share_rounded, onTap: _share),
-          ])),
-        ]),
-      ),
-
-      // ── Day cards ──
+        ),
+        Container(height: 220, decoration: const BoxDecoration(gradient: LuxTheme.heroOverlay)),
+        Positioned(left: 24, right: 24, bottom: 24, child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const GoldBadge(label: 'YOUR ITINERARY'),
+            const SizedBox(height: 10),
+            Text(_wilaya!.name, style: const TextStyle(fontFamily: 'Georgia', fontSize: 32, fontWeight: FontWeight.w700, color: Colors.white)),
+            const SizedBox(height: 10),
+            Row(children: [
+              _SummaryChip(icon: Icons.calendar_today_rounded, label: '$_days ${_days == 1 ? 'day' : 'days'}'),
+              const SizedBox(width: 10),
+              _SummaryChip(icon: Icons.account_balance_wallet_rounded, label: '${NumberFormat('#,##0').format(_totalBudget)} DZD'),
+              const SizedBox(width: 10),
+              _SummaryChip(icon: Icons.star_rounded, label: _budgetMode == 'luxury' ? 'Luxury' : (_budgetMode == 'budget' ? 'Budget' : 'Mid')),
+            ]),
+          ],
+        )),
+        Positioned(top: 16, right: 16, child: Row(children: [
+          _HeroActionBtn(icon: Icons.picture_as_pdf_rounded, onTap: _exportPdf),
+          const SizedBox(width: 8),
+          _HeroActionBtn(icon: Icons.share_rounded, onTap: _share),
+        ])),
+      ]),
       Padding(
         padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -871,20 +941,18 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
           const SizedBox(height: 24),
           ..._itineraryDays.map((day) => _DayCard(day: day, totalDays: _days)),
           const SizedBox(height: 28),
-          // Tips section
           const GoldDivider(label: 'TRAVEL TIPS'),
           const SizedBox(height: 20),
-          _TipCard(icon: Icons.directions_car_rounded, title: 'Transport', body: 'Taxi or rental car is recommended for maximum flexibility.'),
+          _TipCard(icon: Icons.directions_car_rounded, title: 'Transport',  body: 'Taxi or rental car is recommended for maximum flexibility.'),
           const SizedBox(height: 10),
-          _TipCard(icon: Icons.thermostat_rounded, title: 'Weather', body: _wilaya!.categories.contains('Beach') ? 'Best visited Jun–Sep for warm beaches.' : 'Spring (Mar–May) and autumn (Sep–Nov) offer ideal conditions.'),
+          _TipCard(icon: Icons.thermostat_rounded,     title: 'Weather',    body: _wilaya!.categories.contains('Beach') ? 'Best visited Jun–Sep for warm beaches.' : 'Spring (Mar–May) and autumn (Sep–Nov) offer ideal conditions.'),
           const SizedBox(height: 10),
-          _TipCard(icon: Icons.payments_rounded, title: 'Currency', body: 'Carry cash — many local shops and markets are cash-only.'),
+          _TipCard(icon: Icons.payments_rounded,       title: 'Currency',   body: 'Carry cash — many local shops and markets are cash-only.'),
           const SizedBox(height: 10),
-          _TipCard(icon: Icons.restaurant_rounded, title: 'Local Food', body: 'Must-try: ${_wilaya!.activities.take(2).join(' · ')}'),
+          _TipCard(icon: Icons.restaurant_rounded,     title: 'Local Food', body: 'Must-try: ${_wilaya!.activities.take(2).join(' · ')}'),
           const SizedBox(height: 32),
-          // Regenerate CTA
           SizedBox(width: double.infinity, child: LuxButton(
-            label: 'Regenerate',
+            label: 'Plan Another Trip',
             icon: Icons.refresh_rounded,
             outlined: true,
             onTap: () => setState(() { _generated = false; _currentStep = 0; _goToStep(0); }),
@@ -909,7 +977,6 @@ class _StepDot extends StatelessWidget {
   final int index, current;
   final bool done;
   const _StepDot({required this.index, required this.current, required this.done});
-
   @override
   Widget build(BuildContext context) {
     final active   = index == current && !done;
@@ -1012,13 +1079,8 @@ class _DayCardState extends State<_DayCard> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Container(
-        decoration: BoxDecoration(
-          color: LuxTheme.cream,
-          borderRadius: LuxTheme.radius20,
-          boxShadow: LuxTheme.cardShadow,
-        ),
+        decoration: BoxDecoration(color: LuxTheme.cream, borderRadius: LuxTheme.radius20, boxShadow: LuxTheme.cardShadow),
         child: Column(children: [
-          // Header
           PressScale(
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
@@ -1041,22 +1103,20 @@ class _DayCardState extends State<_DayCard> {
               ]),
             ),
           ),
-
-          // Gold divider
           if (_expanded) Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Container(height: 1, decoration: const BoxDecoration(gradient: LuxTheme.goldGrad)),
           ),
-
-          // Time slots
           if (_expanded) Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
             child: Column(children: [
-              _TimeSlot(icon: Icons.wb_sunny_rounded,     color: LuxTheme.gold,        label: 'Morning',   value: d.morning),
-              _TimeSlot(icon: Icons.restaurant_rounded,   color: LuxTheme.terracotta,  label: 'Lunch',     value: d.lunch),
-              _TimeSlot(icon: Icons.explore_rounded,      color: Color(0xFF2E86AB),    label: 'Afternoon', value: d.afternoon),
-              _TimeSlot(icon: Icons.nightlight_round,     color: LuxTheme.mocha,       label: 'Evening',   value: d.evening),
-              _TimeSlot(icon: Icons.bed_rounded,          color: LuxTheme.latte,       label: 'Hotel',     value: d.hotel, isLast: true),
+              _TimeSlot(icon: Icons.wb_sunny_rounded,    color: LuxTheme.gold,           label: 'Morning',   value: d.morning),
+              _TimeSlot(icon: Icons.restaurant_rounded,  color: LuxTheme.terracotta,     label: 'Lunch',     value: d.lunch),
+              _TimeSlot(icon: Icons.explore_rounded,     color: const Color(0xFF2E86AB), label: 'Afternoon', value: d.afternoon),
+              _TimeSlot(icon: Icons.nightlight_round,    color: LuxTheme.mocha,          label: 'Evening',   value: d.evening),
+              _TimeSlot(icon: Icons.bed_rounded,         color: LuxTheme.latte,          label: 'Hotel',     value: d.hotel),
+              if (d.tip.isNotEmpty)
+                _TimeSlot(icon: Icons.lightbulb_rounded, color: LuxTheme.gold,           label: 'Tip',       value: d.tip, isLast: true),
             ]),
           ),
         ]),
@@ -1097,11 +1157,7 @@ class _TipCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: LuxTheme.cream,
-      borderRadius: LuxTheme.radius14,
-      boxShadow: LuxTheme.cardShadow,
-    ),
+    decoration: BoxDecoration(color: LuxTheme.cream, borderRadius: LuxTheme.radius14, boxShadow: LuxTheme.cardShadow),
     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
         width: 38, height: 38,
@@ -1121,6 +1177,15 @@ class _TipCard extends StatelessWidget {
 // ── Data model ────────────────────────────────────────────────
 class _ItineraryDay {
   final int dayNumber, budgetDay;
-  final String morning, lunch, afternoon, evening, hotel;
-  const _ItineraryDay({required this.dayNumber, required this.morning, required this.lunch, required this.afternoon, required this.evening, required this.hotel, required this.budgetDay});
+  final String morning, lunch, afternoon, evening, hotel, tip;
+  const _ItineraryDay({
+    required this.dayNumber,
+    required this.morning,
+    required this.lunch,
+    required this.afternoon,
+    required this.evening,
+    required this.hotel,
+    required this.budgetDay,
+    this.tip = '',
+  });
 }

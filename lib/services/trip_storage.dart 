@@ -1,0 +1,173 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+// ═══════════════════════════════════════════════════════════════
+//  SAVED TRIP MODEL
+// ═══════════════════════════════════════════════════════════════
+class SavedTrip {
+  final String id;
+  final String wilayaName;
+  final String wilayaImage;
+  final String category;
+  final int days;
+  final int totalBudget;
+  final String budgetMode;
+  final List<SavedTripDay> itinerary;
+  final DateTime createdAt;
+
+  const SavedTrip({
+    required this.id,
+    required this.wilayaName,
+    required this.wilayaImage,
+    required this.category,
+    required this.days,
+    required this.totalBudget,
+    required this.budgetMode,
+    required this.itinerary,
+    required this.createdAt,
+  });
+
+  // ── Serialization ──────────────────────────────────────────
+  Map<String, dynamic> toJson() => {
+    'id':          id,
+    'wilayaName':  wilayaName,
+    'wilayaImage': wilayaImage,
+    'category':    category,
+    'days':        days,
+    'totalBudget': totalBudget,
+    'budgetMode':  budgetMode,
+    'itinerary':   itinerary.map((d) => d.toJson()).toList(),
+    'createdAt':   createdAt.toIso8601String(),
+  };
+
+  factory SavedTrip.fromJson(Map<String, dynamic> json) => SavedTrip(
+    id:          json['id'] as String,
+    wilayaName:  json['wilayaName'] as String,
+    wilayaImage: json['wilayaImage'] as String,
+    category:    json['category'] as String,
+    days:        json['days'] as int,
+    totalBudget: json['totalBudget'] as int,
+    budgetMode:  json['budgetMode'] as String,
+    itinerary:   (json['itinerary'] as List)
+        .map((d) => SavedTripDay.fromJson(d as Map<String, dynamic>))
+        .toList(),
+    createdAt:   DateTime.parse(json['createdAt'] as String),
+  );
+}
+
+class SavedTripDay {
+  final int dayNumber;
+  final String morning;
+  final String lunch;
+  final String afternoon;
+  final String evening;
+  final String hotel;
+  final int budgetDay;
+
+  const SavedTripDay({
+    required this.dayNumber,
+    required this.morning,
+    required this.lunch,
+    required this.afternoon,
+    required this.evening,
+    required this.hotel,
+    required this.budgetDay,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'dayNumber':  dayNumber,
+    'morning':    morning,
+    'lunch':      lunch,
+    'afternoon':  afternoon,
+    'evening':    evening,
+    'hotel':      hotel,
+    'budgetDay':  budgetDay,
+  };
+
+  factory SavedTripDay.fromJson(Map<String, dynamic> j) => SavedTripDay(
+    dayNumber:  j['dayNumber'] as int,
+    morning:    j['morning']   as String,
+    lunch:      j['lunch']     as String,
+    afternoon:  j['afternoon'] as String,
+    evening:    j['evening']   as String,
+    hotel:      j['hotel']     as String,
+    budgetDay:  j['budgetDay'] as int,
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  TRIP STORAGE SERVICE
+// ═══════════════════════════════════════════════════════════════
+class TripStorageService extends ChangeNotifier {
+  static const String _key = 'saved_trips';
+  static TripStorageService? _instance;
+
+  List<SavedTrip> _trips = [];
+  List<SavedTrip> get trips => List.unmodifiable(_trips);
+  bool get hasTrips => _trips.isNotEmpty;
+  int  get count    => _trips.length;
+
+  // Singleton
+  TripStorageService._();
+  static TripStorageService get instance {
+    _instance ??= TripStorageService._();
+    return _instance!;
+  }
+
+  // ── Load from disk ─────────────────────────────────────────
+  Future<void> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw   = prefs.getString(_key);
+      if (raw != null) {
+        final list = jsonDecode(raw) as List;
+        _trips = list
+            .map((e) => SavedTrip.fromJson(e as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      }
+      notifyListeners();
+    } catch (_) {
+      _trips = [];
+    }
+  }
+
+  // ── Save a trip ────────────────────────────────────────────
+  Future<bool> save(SavedTrip trip) async {
+    try {
+      // Avoid duplicate ids
+      _trips.removeWhere((t) => t.id == trip.id);
+      _trips.insert(0, trip);
+      await _persist();
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ── Delete a trip ──────────────────────────────────────────
+  Future<void> delete(String id) async {
+    _trips.removeWhere((t) => t.id == id);
+    await _persist();
+    notifyListeners();
+  }
+
+  // ── Check if saved ─────────────────────────────────────────
+  bool isSaved(String id) => _trips.any((t) => t.id == id);
+
+  // ── Clear all ─────────────────────────────────────────────
+  Future<void> clearAll() async {
+    _trips.clear();
+    await _persist();
+    notifyListeners();
+  }
+
+  // ── Persist to disk ────────────────────────────────────────
+  Future<void> _persist() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw   = jsonEncode(_trips.map((t) => t.toJson()).toList());
+    await prefs.setString(_key, raw);
+  }
+}
