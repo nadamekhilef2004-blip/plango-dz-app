@@ -8,6 +8,9 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import '../utils/luxury_theme.dart';
 import '../data/wilaya_data.dart';
+import '../services/trip_storage.dart';
+import '../services/auth_service.dart';
+import '../services/trip_storage.dart';
 
 // ═══════════════════════════════════════════════════════════════
 //  AI TRIP PLANNER  —  Professional Luxury Edition
@@ -25,17 +28,18 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
   // ══════════════════════════════════════════════════════════
   //  ▶▶ PASTE YOUR API KEY HERE — KEEP IT PRIVATE ◀◀
   // ══════════════════════════════════════════════════════════
-  static const String _apiKey = 'sk-abcdijkl1234uvwxabcdijkl1234uvwxabcdijkl';
+  static const String _apiKey = 'AIzaSyBkpoU6aYoWQmv_IeDrco2xh7XI1RIKkIg';
   // ══════════════════════════════════════════════════════════
 
   // ── State ──────────────────────────────────────────────────
-  int     _currentStep   = 0;
-  String  _category      = '';
+  int         _currentStep  = 0;
+  String      _category     = '';
   WilayaData? _wilaya;
-  List<String> _activities = [];
-  int     _days          = 3;
-  String  _budgetMode    = 'mid';
-  int     _customBudget  = 50000;
+  List<String> _activities  = [];
+  int         _days         = 3;
+  String      _budgetMode   = 'mid';
+  int         _customBudget = 50000;
+  bool        _tripSaved    = false;
 
   // ── Result ────────────────────────────────────────────────
   bool _generating = false;
@@ -45,7 +49,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
 
   // ── Typing animation ─────────────────────────────────────
   late final AnimationController _typingCtrl;
-  String _typingText = '';
+  String _typingText  = '';
   int    _typingIndex = 0;
   final String _typingMessage = 'Crafting your personalised itinerary…';
 
@@ -159,12 +163,73 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
   }
 
   // ══════════════════════════════════════════════════════════
-  //  REAL AI GENERATE — calls Claude API
+  //  SAVE TRIP
+  // ══════════════════════════════════════════════════════════
+  Future<void> _saveTrip() async {
+    if (_wilaya == null || _itineraryDays.isEmpty) return;
+
+    final trip = SavedTrip(
+      id:          DateTime.now().millisecondsSinceEpoch.toString(),
+      userId:      AuthService.instance.user?.id ?? 0,
+      wilayaName:  _wilaya!.name,
+      wilayaImage: _wilaya!.imagePath,
+      category:    _category,
+      days:        _days,
+      totalBudget: _totalBudget,
+      budgetMode:  _budgetMode,
+      createdAt:   DateTime.now(),
+      itinerary:   _itineraryDays.map((d) => SavedTripDay(
+        dayNumber:  d.dayNumber,
+        morning:    d.morning,
+        lunch:      d.lunch,
+        afternoon:  d.afternoon,
+        evening:    d.evening,
+        hotel:      d.hotel,
+        budgetDay:  d.budgetDay,
+      )).toList(),
+    );
+
+    final ok = await TripStorageService.instance.save(
+  wilayaName:  _wilaya!.name,
+  wilayaImage: _wilaya!.imagePath,
+  category:    _category,
+  days:        _days,
+  totalBudget: _totalBudget,
+  budgetMode:  _budgetMode,
+  itinerary:   _itineraryDays.map((d) => SavedTripDay(
+    dayNumber:  d.dayNumber,
+    morning:    d.morning,
+    lunch:      d.lunch,
+    afternoon:  d.afternoon,
+    evening:    d.evening,
+    hotel:      d.hotel,
+    budgetDay:  d.budgetDay,
+  )).toList(),
+);
+    if (mounted) {
+      setState(() => _tripSaved = ok);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          ok ? 'Trip saved to My Trips! ✓' : 'Could not save trip',
+          style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        backgroundColor: ok ? LuxTheme.gold : LuxTheme.terracotta,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: LuxTheme.radius10),
+        margin: const EdgeInsets.all(16),
+      ));
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  REAL AI GENERATE — calls Gemini API
   // ══════════════════════════════════════════════════════════
   Future<void> _generate() async {
     if (_wilaya == null) return;
 
-    _scrollCtrl.animateTo(0, duration: const Duration(milliseconds: 400), curve: Curves.easeOut);
+    if (_scrollCtrl.hasClients) {
+      _scrollCtrl.animateTo(0, duration: const Duration(milliseconds: 400), curve: Curves.easeOut);
+    }
 
     setState(() {
       _generating    = true;
@@ -172,75 +237,69 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
       _typingText    = '';
       _typingIndex   = 0;
       _itineraryDays = [];
+      _tripSaved     = false;
     });
 
     _typingCtrl.forward(from: 0);
 
-    // Calculate total budget
     double multiplier = _budgetMode == 'budget' ? 0.7 : (_budgetMode == 'luxury' ? 2.0 : 1.2);
     _totalBudget = _budgetMode == 'custom'
         ? _customBudget
         : (_wilaya!.defaultPricePerDay * _days * multiplier).round();
 
     try {
-      final prompt = '''
-You are a professional Algerian travel planner. Create a detailed $_days-day itinerary for ${_wilaya!.name}, Algeria.
-
-Trip details:
-- Category: $_category
-- Duration: $_days days
-- Budget level: $_budgetMode
-- Total budget: ${NumberFormat('#,##0').format(_totalBudget)} DZD
-- Preferred activities: ${_activities.isEmpty ? 'any suitable activities for this destination' : _activities.join(', ')}
-
-Important rules:
-- Day 1 morning must always be: arrival and hotel check-in
-- Last day evening must always be: farewell dinner and departure preparation
-- Use REAL local restaurant names from ${_wilaya!.name}
-- Use REAL attraction and landmark names from ${_wilaya!.name}
-- Hotel suggestion must match the $_budgetMode budget level
-- Each day tip must be a genuinely useful local insight
-- Be specific and descriptive, never generic
-
-Return ONLY a valid JSON array with no explanation, no markdown formatting, no code blocks — just raw JSON:
-[
-  {
-    "day": 1,
-    "morning": "detailed morning activity",
-    "lunch": "Restaurant name — short description of cuisine/dish",
-    "afternoon": "detailed afternoon activity",
-    "evening": "Restaurant name or evening activity description",
-    "hotel": "Hotel name — price range per night in DZD",
-    "tip": "One practical local tip for this day"
-  }
-]
-''';
+      final prompt = 'You are a travel planner. Create a $_days-day trip plan for ${_wilaya!.name} Algeria. Budget: $_budgetMode. Total budget: ${NumberFormat('#,##0').format(_totalBudget)} DZD. Activities: ${_activities.isEmpty ? "general tourism" : _activities.join(" and ")}. STRICT RULES: 1. Output ONLY a JSON array with no text before or after. 2. No apostrophes or single quotes in any value, use the word and instead. 3. No line breaks inside any value. 4. No special characters. 5. Every object must use curly braces not parentheses. 6. Day 1 morning must be arrival and check-in. 7. Last day evening must be farewell dinner and departure. 8. Use real restaurant and hotel names from ${_wilaya!.name}. OUTPUT FORMAT EXACTLY LIKE THIS: [{"day":1,"morning":"text here","lunch":"text here","afternoon":"text here","evening":"text here","hotel":"text here","tip":"text here"}] Output exactly $_days objects.';
 
       final response = await http.post(
-        Uri.parse('https://api.anthropic.com/v1/messages'),
-        headers: {
-          'x-api-key': _apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
+        Uri.parse(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$_apiKey',
+        ),
+        headers: {'content-type': 'application/json'},
         body: jsonEncode({
-          'model': 'claude-sonnet-4-6',
-          'max_tokens': 4000,
-          'messages': [
-            {'role': 'user', 'content': prompt}
+          'contents': [
+            {
+              'parts': [{'text': prompt}]
+            }
           ],
+          'generationConfig': {
+            'temperature': 0.5,
+            'maxOutputTokens': 4000,
+            'responseMimeType': 'application/json',
+          },
         }),
       );
 
       if (response.statusCode == 200) {
         final jsonResponse = jsonDecode(response.body);
-        String rawText = jsonResponse['content'][0]['text'];
+        String rawText = jsonResponse['candidates'][0]['content']['parts'][0]['text'];
 
-        // Strip markdown code blocks if Claude adds them
+        // Clean markdown if present
         rawText = rawText
             .replaceAll('```json', '')
             .replaceAll('```', '')
             .trim();
+
+        // Fix line breaks and tabs
+        rawText = rawText
+            .replaceAll('\n', ' ')
+            .replaceAll('\r', ' ')
+            .replaceAll('\t', ' ');
+
+        // Remove apostrophes inside JSON string values
+        rawText = rawText.replaceAllMapped(
+          RegExp(r'"([^"]*)"'),
+          (match) => '"${match.group(1)!.replaceAll("'", "")}"',
+        );
+
+        // Extract only the JSON array part
+        final startIndex = rawText.indexOf('[');
+        final endIndex   = rawText.lastIndexOf(']');
+
+        if (startIndex == -1 || endIndex == -1) {
+          throw Exception('Could not find JSON array in response: $rawText');
+        }
+
+        rawText = rawText.substring(startIndex, endIndex + 1);
 
         final List<dynamic> daysJson = jsonDecode(rawText);
         final days = <_ItineraryDay>[];
@@ -253,7 +312,7 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
             afternoon:  d['afternoon'] as String,
             evening:    d['evening'] as String,
             hotel:      d['hotel'] as String,
-            budgetDay:  (_totalBudget / _days).round(),
+            budgetDay:  (d['budget_day'] as num?)?.toInt() ?? (_totalBudget / _days).round(),
             tip:        d['tip'] as String? ?? '',
           ));
         }
@@ -277,10 +336,10 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
         setState(() => _generating = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),   // ← shows the REAL error now
+            content: Text('Error: $e'),
             backgroundColor: LuxTheme.terracotta,
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 8), // long enough to read it
+            duration: const Duration(seconds: 8),
           ),
         );
       }
@@ -311,13 +370,13 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
           children: [
             pw.Text('DAY ${day.dayNumber}', style: pw.TextStyle(font: bold, fontSize: 14, color: PdfColors.brown800)),
             pw.SizedBox(height: 6),
-            pw.Text('☀  Morning:   ${day.morning}',    style: pw.TextStyle(font: regular, fontSize: 11)),
-            pw.Text('🍽  Lunch:     ${day.lunch}',     style: pw.TextStyle(font: regular, fontSize: 11)),
-            pw.Text('🗺  Afternoon: ${day.afternoon}', style: pw.TextStyle(font: regular, fontSize: 11)),
-            pw.Text('🌙  Evening:   ${day.evening}',   style: pw.TextStyle(font: regular, fontSize: 11)),
-            pw.Text('🏨  Hotel:     ${day.hotel}',     style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.Text('Morning:   ${day.morning}',    style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.Text('Lunch:     ${day.lunch}',      style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.Text('Afternoon: ${day.afternoon}',  style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.Text('Evening:   ${day.evening}',    style: pw.TextStyle(font: regular, fontSize: 11)),
+            pw.Text('Hotel:     ${day.hotel}',      style: pw.TextStyle(font: regular, fontSize: 11)),
             if (day.tip.isNotEmpty)
-              pw.Text('💡  Tip:       ${day.tip}',     style: pw.TextStyle(font: regular, fontSize: 11)),
+              pw.Text('Tip:       ${day.tip}',      style: pw.TextStyle(font: regular, fontSize: 11)),
             pw.SizedBox(height: 14),
           ],
         )),
@@ -325,9 +384,9 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
         pw.SizedBox(height: 8),
         pw.Text('Tips & Reminders', style: pw.TextStyle(font: bold, fontSize: 13, color: PdfColors.brown800)),
         pw.SizedBox(height: 6),
-        pw.Text('• Transport: Taxi or rental car recommended.',                                                                   style: pw.TextStyle(font: regular, fontSize: 11)),
-        pw.Text('• Currency: Carry cash for local markets.',                                                                      style: pw.TextStyle(font: regular, fontSize: 11)),
-        pw.Text('• Best time: ${_wilaya!.categories.contains('Beach') ? 'Jun–Sep' : 'Mar–May / Sep–Nov'}',                       style: pw.TextStyle(font: regular, fontSize: 11)),
+        pw.Text('• Transport: Taxi or rental car recommended.',    style: pw.TextStyle(font: regular, fontSize: 11)),
+        pw.Text('• Currency: Carry cash for local markets.',       style: pw.TextStyle(font: regular, fontSize: 11)),
+        pw.Text('• Best time: ${_wilaya!.categories.contains('Beach') ? 'Jun–Sep' : 'Mar–May / Sep–Nov'}', style: pw.TextStyle(font: regular, fontSize: 11)),
         pw.SizedBox(height: 20),
         pw.Center(child: pw.Text('PlanGo DZ — Your Luxury Travel Companion', style: pw.TextStyle(font: regular, fontSize: 10, color: PdfColors.grey))),
       ],
@@ -387,37 +446,35 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
       color: LuxTheme.cream,
       child: SafeArea(
         bottom: false,
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(children: [
-              PressScale(
-                onTap: () {
-                  if (_generated) {
-                    setState(() { _generated = false; _currentStep = 4; _goToStep(4); });
-                  } else if (_currentStep > 0) {
-                    _goToStep(_currentStep - 1);
-                  } else {
-                    Navigator.pop(context);
-                  }
-                },
-                child: Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(color: LuxTheme.sand, borderRadius: LuxTheme.radius10),
-                  child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: LuxTheme.mocha),
-                ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(children: [
+            PressScale(
+              onTap: () {
+                if (_generated) {
+                  setState(() { _generated = false; _currentStep = 4; _goToStep(4); });
+                } else if (_currentStep > 0) {
+                  _goToStep(_currentStep - 1);
+                } else {
+                  Navigator.pop(context);
+                }
+              },
+              child: Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(color: LuxTheme.sand, borderRadius: LuxTheme.radius10),
+                child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: LuxTheme.mocha),
               ),
-              const Expanded(child: Center(
-                child: Text('AI Planner', style: TextStyle(fontFamily: 'Georgia', fontSize: 20, fontWeight: FontWeight.w700, color: LuxTheme.espresso)),
-              )),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(gradient: const LinearGradient(colors: [LuxTheme.gold, LuxTheme.goldLight]), borderRadius: LuxTheme.radiusPill),
-                child: const Text('AI', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1)),
-              ),
-            ]),
-          ),
-        ]),
+            ),
+            const Expanded(child: Center(
+              child: Text('AI Planner', style: TextStyle(fontFamily: 'Georgia', fontSize: 20, fontWeight: FontWeight.w700, color: LuxTheme.espresso)),
+            )),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(gradient: const LinearGradient(colors: [LuxTheme.gold, LuxTheme.goldLight]), borderRadius: LuxTheme.radiusPill),
+              child: const Text('AI', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1)),
+            ),
+          ]),
+        ),
       ),
     );
   }
@@ -549,7 +606,7 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
       Text('Choose the type of trip that calls to you.', style: LuxTheme.body),
       const SizedBox(height: 32),
       ...List.generate(_cats.length, (i) {
-        final cat = _cats[i];
+        final cat      = _cats[i];
         final selected = _category == cat;
         return Padding(
           padding: const EdgeInsets.only(bottom: 14),
@@ -604,7 +661,9 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 14, crossAxisSpacing: 14, childAspectRatio: 0.88),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2, mainAxisSpacing: 14, crossAxisSpacing: 14, childAspectRatio: 0.88,
+          ),
           itemCount: _wilayas.length,
           itemBuilder: (_, i) {
             final w   = _wilayas[i];
@@ -713,7 +772,10 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(gradient: const LinearGradient(colors: [LuxTheme.gold, LuxTheme.goldLight]), borderRadius: LuxTheme.radius14),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [LuxTheme.gold, LuxTheme.goldLight]),
+              borderRadius: LuxTheme.radius14,
+            ),
             child: Row(children: [
               const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
               const SizedBox(width: 10),
@@ -782,10 +844,10 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
   Widget _buildStep4() {
     final est = _wilaya != null ? (_wilaya!.defaultPricePerDay * _days).round() : 0;
     final budgets = [
-      {'key': 'budget',  'label': 'Budget',    'sub': 'Essential & affordable',  'icon': Icons.savings_rounded,  'mult': 0.7},
-      {'key': 'mid',     'label': 'Mid-range', 'sub': 'Comfort & good value',    'icon': Icons.hotel_rounded,    'mult': 1.2},
-      {'key': 'luxury',  'label': 'Luxury',    'sub': 'Premium experiences',     'icon': Icons.diamond_rounded,  'mult': 2.0},
-      {'key': 'custom',  'label': 'Custom',    'sub': 'Enter your own amount',   'icon': Icons.edit_rounded,     'mult': 1.0},
+      {'key': 'budget', 'label': 'Budget',    'sub': 'Essential & affordable', 'icon': Icons.savings_rounded,  'mult': 0.7},
+      {'key': 'mid',    'label': 'Mid-range', 'sub': 'Comfort & good value',   'icon': Icons.hotel_rounded,    'mult': 1.2},
+      {'key': 'luxury', 'label': 'Luxury',    'sub': 'Premium experiences',    'icon': Icons.diamond_rounded,  'mult': 2.0},
+      {'key': 'custom', 'label': 'Custom',    'sub': 'Enter your own amount',  'icon': Icons.edit_rounded,     'mult': 1.0},
     ];
     return _stepWrapper(Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -826,7 +888,7 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
                   const SizedBox(width: 14),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(b['label'] as String, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: sel ? Colors.white : LuxTheme.espresso)),
-                    Text(b['sub'] as String, style: TextStyle(fontSize: 12, color: sel ? Colors.white70 : LuxTheme.latte)),
+                    Text(b['sub'] as String,   style: TextStyle(fontSize: 12, color: sel ? Colors.white70 : LuxTheme.latte)),
                   ])),
                   if (key != 'custom') ...[
                     Text('~${NumberFormat('#,##0').format(amount)} DZD',
@@ -863,7 +925,10 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
       padding: const EdgeInsets.fromLTRB(0, 0, 0, 32),
       child: _generating
           ? _buildGeneratingState()
-          : FadeTransition(opacity: _resultFade, child: SlideTransition(position: _resultSlide, child: _buildItineraryView())),
+          : FadeTransition(
+              opacity: _resultFade,
+              child: SlideTransition(position: _resultSlide, child: _buildItineraryView()),
+            ),
     );
   }
 
@@ -905,8 +970,10 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
 
   Widget _buildItineraryView() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // ── Hero banner ──
       Stack(children: [
-        SizedBox(height: 220, width: double.infinity,
+        SizedBox(
+          height: 220, width: double.infinity,
           child: Image.asset(_wilaya!.imagePath, fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => Container(height: 220, decoration: const BoxDecoration(gradient: LuxTheme.terracottaGrad)),
           ),
@@ -920,11 +987,11 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
             Text(_wilaya!.name, style: const TextStyle(fontFamily: 'Georgia', fontSize: 32, fontWeight: FontWeight.w700, color: Colors.white)),
             const SizedBox(height: 10),
             Row(children: [
-              _SummaryChip(icon: Icons.calendar_today_rounded, label: '$_days ${_days == 1 ? 'day' : 'days'}'),
+              _SummaryChip(icon: Icons.calendar_today_rounded,         label: '$_days ${_days == 1 ? 'day' : 'days'}'),
               const SizedBox(width: 10),
               _SummaryChip(icon: Icons.account_balance_wallet_rounded, label: '${NumberFormat('#,##0').format(_totalBudget)} DZD'),
               const SizedBox(width: 10),
-              _SummaryChip(icon: Icons.star_rounded, label: _budgetMode == 'luxury' ? 'Luxury' : (_budgetMode == 'budget' ? 'Budget' : 'Mid')),
+              _SummaryChip(icon: Icons.star_rounded,                   label: _budgetMode == 'luxury' ? 'Luxury' : (_budgetMode == 'budget' ? 'Budget' : 'Mid')),
             ]),
           ],
         )),
@@ -934,6 +1001,8 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
           _HeroActionBtn(icon: Icons.share_rounded, onTap: _share),
         ])),
       ]),
+
+      // ── Day cards + buttons ──
       Padding(
         padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -951,18 +1020,51 @@ Return ONLY a valid JSON array with no explanation, no markdown formatting, no c
           const SizedBox(height: 10),
           _TipCard(icon: Icons.restaurant_rounded,     title: 'Local Food', body: 'Must-try: ${_wilaya!.activities.take(2).join(' · ')}'),
           const SizedBox(height: 32),
+
+          // ── Plan Another Trip ──
           SizedBox(width: double.infinity, child: LuxButton(
             label: 'Plan Another Trip',
             icon: Icons.refresh_rounded,
             outlined: true,
-            onTap: () => setState(() { _generated = false; _currentStep = 0; _goToStep(0); }),
+            onTap: () => setState(() {
+              _generated   = false;
+              _tripSaved   = false;
+              _currentStep = 0;
+              _goToStep(0);
+            }),
           )),
           const SizedBox(height: 12),
+
+          // ── Save to My Trips ──
+          SizedBox(width: double.infinity, child: _tripSaved
+            ? Container(
+                height: 54,
+                decoration: BoxDecoration(
+                  color: LuxTheme.gold.withOpacity(0.12),
+                  borderRadius: LuxTheme.radius14,
+                  border: Border.all(color: LuxTheme.gold),
+                ),
+                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.check_circle_rounded, color: LuxTheme.gold, size: 20),
+                  SizedBox(width: 8),
+                  Text('Saved to My Trips ✓', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: LuxTheme.gold)),
+                ]),
+              )
+            : LuxButton(
+                label: 'Save to My Trips',
+                icon: Icons.bookmark_add_rounded,
+                onTap: _saveTrip,
+              ),
+          ),
+          const SizedBox(height: 12),
+
+          // ── Export as PDF ──
           SizedBox(width: double.infinity, child: LuxButton(
             label: 'Export as PDF',
             icon: Icons.picture_as_pdf_rounded,
             onTap: _exportPdf,
           )),
+          const SizedBox(height: 16),
         ]),
       ),
     ]);
@@ -1004,7 +1106,7 @@ class _BigRoundBtn extends StatefulWidget {
 }
 class _BigRoundBtnState extends State<_BigRoundBtn> with SingleTickerProviderStateMixin {
   late final AnimationController _c;
-  late final Animation<double> _s;
+  late final Animation<double>   _s;
   @override
   void initState() {
     super.initState();
@@ -1014,8 +1116,8 @@ class _BigRoundBtnState extends State<_BigRoundBtn> with SingleTickerProviderSta
   @override void dispose() { _c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTapDown: (_) => _c.forward(),
-    onTapCancel: () => _c.reverse(),
+    onTapDown:   (_) => _c.forward(),
+    onTapCancel: ()  => _c.reverse(),
     onTap: () { _c.reverse(); widget.onTap(); },
     child: ScaleTransition(scale: _s,
       child: Container(
@@ -1092,7 +1194,8 @@ class _DayCardState extends State<_DayCard> {
                     gradient: const LinearGradient(colors: [LuxTheme.terracotta, LuxTheme.terracottaL]),
                     borderRadius: LuxTheme.radius12,
                   ),
-                  child: Center(child: Text('${d.dayNumber}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16, fontFamily: 'Georgia'))),
+                  child: Center(child: Text('${d.dayNumber}',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16, fontFamily: 'Georgia'))),
                 ),
                 const SizedBox(width: 14),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1127,9 +1230,9 @@ class _DayCardState extends State<_DayCard> {
 
 class _TimeSlot extends StatelessWidget {
   final IconData icon;
-  final Color color;
-  final String label, value;
-  final bool isLast;
+  final Color    color;
+  final String   label, value;
+  final bool     isLast;
   const _TimeSlot({required this.icon, required this.color, required this.label, required this.value, this.isLast = false});
   @override
   Widget build(BuildContext context) => Padding(
@@ -1152,7 +1255,7 @@ class _TimeSlot extends StatelessWidget {
 
 class _TipCard extends StatelessWidget {
   final IconData icon;
-  final String title, body;
+  final String   title, body;
   const _TipCard({required this.icon, required this.title, required this.body});
   @override
   Widget build(BuildContext context) => Container(
@@ -1161,7 +1264,10 @@ class _TipCard extends StatelessWidget {
     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
         width: 38, height: 38,
-        decoration: BoxDecoration(gradient: const LinearGradient(colors: [LuxTheme.gold, LuxTheme.goldLight]), borderRadius: LuxTheme.radius10),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [LuxTheme.gold, LuxTheme.goldLight]),
+          borderRadius: LuxTheme.radius10,
+        ),
         child: Icon(icon, size: 18, color: Colors.white),
       ),
       const SizedBox(width: 14),
@@ -1176,7 +1282,7 @@ class _TipCard extends StatelessWidget {
 
 // ── Data model ────────────────────────────────────────────────
 class _ItineraryDay {
-  final int dayNumber, budgetDay;
+  final int    dayNumber, budgetDay;
   final String morning, lunch, afternoon, evening, hotel, tip;
   const _ItineraryDay({
     required this.dayNumber,

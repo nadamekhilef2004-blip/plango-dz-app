@@ -1,23 +1,25 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'database_helper.dart';
 
 // ═══════════════════════════════════════════════════════════════
 //  USER MODEL
 // ═══════════════════════════════════════════════════════════════
 class AppUser {
+  final int    id;
   final String name;
   final String email;
-  final String password; // hashed in a real app
+  final String password;
+  final String avatarColor;
   final DateTime joinedAt;
-  final String? avatarColor; // stored as hex string
 
   const AppUser({
+    required this.id,
     required this.name,
     required this.email,
     required this.password,
+    required this.avatarColor,
     required this.joinedAt,
-    this.avatarColor,
   });
 
   String get initials {
@@ -28,56 +30,46 @@ class AppUser {
 
   String get firstName => name.trim().split(' ').first;
 
-  Map<String, dynamic> toJson() => {
-    'name':        name,
-    'email':       email,
-    'password':    password,
-    'joinedAt':    joinedAt.toIso8601String(),
-    'avatarColor': avatarColor,
-  };
-
-  factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
-    name:        j['name']        as String,
-    email:       j['email']       as String,
-    password:    j['password']    as String,
-    joinedAt:    DateTime.parse(j['joinedAt'] as String),
-    avatarColor: j['avatarColor'] as String?,
-  );
-
-  AppUser copyWith({String? name, String? email, String? password, String? avatarColor}) => AppUser(
-    name:        name        ?? this.name,
-    email:       email       ?? this.email,
-    password:    password    ?? this.password,
-    joinedAt:    joinedAt,
-    avatarColor: avatarColor ?? this.avatarColor,
+  factory AppUser.fromMap(Map<String, dynamic> m) => AppUser(
+    id:          m['id']          as int,
+    name:        m['name']        as String,
+    email:       m['email']       as String,
+    password:    m['password']    as String,
+    avatarColor: m['avatar_color'] as String? ?? 'C1440E',
+    joinedAt:    DateTime.parse(m['joined_at'] as String),
   );
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  AUTH SERVICE  (singleton ChangeNotifier)
+//  AUTH SERVICE  —  SQLite-backed singleton
 // ═══════════════════════════════════════════════════════════════
 class AuthService extends ChangeNotifier {
-  static const _userKey = 'current_user';
+  static const _sessionKey = 'logged_in_user_id';
+
   static AuthService? _instance;
-
-  AppUser? _user;
-  AppUser? get user      => _user;
-  bool     get isLoggedIn => _user != null;
-
-  AuthService._();
   static AuthService get instance {
     _instance ??= AuthService._();
     return _instance!;
   }
+  AuthService._();
 
-  // ── Load saved session ─────────────────────────────────────
+  AppUser? _user;
+  AppUser? get user       => _user;
+  bool     get isLoggedIn => _user != null;
+
+  final _db = DatabaseHelper.instance;
+
+  // ── Restore session on app start ──────────────────────────
   Future<void> load() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw   = prefs.getString(_userKey);
-      if (raw != null) {
-        _user = AppUser.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-        notifyListeners();
+      final prefs  = await SharedPreferences.getInstance();
+      final userId = prefs.getInt(_sessionKey);
+      if (userId != null) {
+        final row = await _db.getUserById(userId);
+        if (row != null) {
+          _user = AppUser.fromMap(row);
+          notifyListeners();
+        }
       }
     } catch (_) {}
   }
@@ -88,74 +80,131 @@ class AuthService extends ChangeNotifier {
     required String email,
     required String password,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 900)); // simulate network
-    if (name.trim().length < 2)    return AuthResult.error('Name must be at least 2 characters.');
-    if (!email.contains('@'))      return AuthResult.error('Please enter a valid email address.');
-    if (password.length < 6)       return AuthResult.error('Password must be at least 6 characters.');
+    // Basic validation
+    if (name.trim().length < 2)
+      return AuthResult.error('Name must be at least 2 characters.');
+    if (!email.contains('@') || !email.contains('.'))
+      return AuthResult.error('Please enter a valid email address.');
+    if (password.length < 6)
+      return AuthResult.error('Password must be at least 6 characters.');
 
-    _user = AppUser(
-      name:        name.trim(),
-      email:       email.trim().toLowerCase(),
-      password:    password,
-      joinedAt:    DateTime.now(),
-      avatarColor: _pickColor(name),
-    );
-    await _persist();
+    final now = DateTime.now();
+    final id  = await _db.insertUser({
+      'name':         name.trim(),
+      'email':        email.trim().toLowerCase(),
+      'password':     password,
+      'avatar_color': _pickColor(name),
+      'joined_at':    now.toIso8601String(),
+    });
+
+    if (id == -1) return AuthResult.error('An account with this email already exists.');
+
+    final row = await _db.getUserById(id);
+    if (row == null) return AuthResult.error('Something went wrong. Please try again.');
+
+    _user = AppUser.fromMap(row);
+    await _saveSession(_user!.id);
     notifyListeners();
     return AuthResult.success();
   }
 
   // ── Login ──────────────────────────────────────────────────
-  Future<AuthResult> login({required String email, required String password}) async {
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (_user == null)                                   return AuthResult.error('No account found. Please create one first.');
-    if (_user!.email != email.trim().toLowerCase())      return AuthResult.error('Email not found.');
-    if (_user!.password != password)                     return AuthResult.error('Incorrect password.');
+  Future<AuthResult> login({
+    required String email,
+    required String password,
+  }) async {
+    final row = await _db.getUserByEmail(email.trim());
+    if (row == null)               return AuthResult.error('No account found with this email.');
+    if (row['password'] != password) return AuthResult.error('Incorrect password.');
+
+    _user = AppUser.fromMap(row);
+    await _saveSession(_user!.id);
     notifyListeners();
     return AuthResult.success();
   }
 
-  // ── Update profile ─────────────────────────────────────────
+  // ── Update name ────────────────────────────────────────────
   Future<void> updateName(String name) async {
-    if (_user == null) return;
-    _user = _user!.copyWith(name: name.trim());
-    await _persist();
+    if (_user == null || name.trim().length < 2) return;
+    await _db.updateUser(_user!.id, {'name': name.trim()});
+    final row = await _db.getUserById(_user!.id);
+    if (row != null) _user = AppUser.fromMap(row);
     notifyListeners();
   }
 
-  Future<void> updateEmail(String email) async {
+  // ── Update email ───────────────────────────────────────────
+  Future<AuthResult> updateEmail(String email) async {
+    if (_user == null) return AuthResult.error('Not logged in.');
+    if (!email.contains('@')) return AuthResult.error('Invalid email.');
+
+    // Check not already taken by another account
+    final existing = await _db.getUserByEmail(email.trim());
+    if (existing != null && existing['id'] != _user!.id) {
+      return AuthResult.error('This email is already in use.');
+    }
+
+    await _db.updateUser(_user!.id, {'email': email.trim().toLowerCase()});
+    final row = await _db.getUserById(_user!.id);
+    if (row != null) _user = AppUser.fromMap(row);
+    notifyListeners();
+    return AuthResult.success();
+  }
+
+  // ── Update password ────────────────────────────────────────
+  Future<AuthResult> updatePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    if (_user == null)                  return AuthResult.error('Not logged in.');
+    if (_user!.password != currentPassword) return AuthResult.error('Current password is incorrect.');
+    if (newPassword.length < 6)         return AuthResult.error('New password must be at least 6 characters.');
+
+    await _db.updateUser(_user!.id, {'password': newPassword});
+    final row = await _db.getUserById(_user!.id);
+    if (row != null) _user = AppUser.fromMap(row);
+    notifyListeners();
+    return AuthResult.success();
+  }
+
+  // ── Delete account ─────────────────────────────────────────
+  Future<void> deleteAccount() async {
     if (_user == null) return;
-    _user = _user!.copyWith(email: email.trim().toLowerCase());
-    await _persist();
+    await _db.deleteUser(_user!.id);
+    await _clearSession();
+    _user = null;
     notifyListeners();
   }
 
   // ── Logout ─────────────────────────────────────────────────
   Future<void> logout() async {
     _user = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_userKey);
+    await _clearSession();
     notifyListeners();
   }
 
-  // ── Helpers ────────────────────────────────────────────────
-  Future<void> _persist() async {
-    if (_user == null) return;
+  // ── Session helpers ────────────────────────────────────────
+  Future<void> _saveSession(int userId) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_userKey, jsonEncode(_user!.toJson()));
+    await prefs.setInt(_sessionKey, userId);
   }
 
+  Future<void> _clearSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_sessionKey);
+  }
+
+  // ── Avatar color picker ────────────────────────────────────
   String _pickColor(String name) {
-    final colors = ['C1440E', 'C9A84C', '2E86AB', '4E7C59', '8B4513', '6B4226'];
+    const colors = ['C1440E', 'C9A84C', '2E86AB', '4E7C59', '8B4513', '6B4226'];
     return colors[name.codeUnitAt(0) % colors.length];
   }
 }
 
-// ── Result wrapper ─────────────────────────────────────────────
+// ── Result wrapper ────────────────────────────────────────────
 class AuthResult {
-  final bool   ok;
+  final bool    ok;
   final String? errorMessage;
   const AuthResult._(this.ok, this.errorMessage);
-  factory AuthResult.success()          => const AuthResult._(true,  null);
-  factory AuthResult.error(String msg)  => AuthResult._(false, msg);
+  factory AuthResult.success()         => const AuthResult._(true, null);
+  factory AuthResult.error(String msg) => AuthResult._(false, msg);
 }
