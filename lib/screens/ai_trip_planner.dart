@@ -148,7 +148,9 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
     _stepCtrl.reset();
     _stepCtrl.forward();
     _progressCtrl.animateTo(step / (_totalSteps - 1));
-    _pageCtrl.animateToPage(step, duration: const Duration(milliseconds: 380), curve: Curves.easeInOut);
+    if (_pageCtrl.hasClients) {
+  _pageCtrl.animateToPage(step, duration: const Duration(milliseconds: 380), curve: Curves.easeInOut);
+}
   }
 
   bool get _canAdvance {
@@ -228,8 +230,8 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
     if (_wilaya == null) return;
 
     if (_scrollCtrl.hasClients) {
-      _scrollCtrl.animateTo(0, duration: const Duration(milliseconds: 400), curve: Curves.easeOut);
-    }
+  _scrollCtrl.animateTo(0, duration: const Duration(milliseconds: 400), curve: Curves.easeOut);
+}
 
     setState(() {
       _generating    = true;
