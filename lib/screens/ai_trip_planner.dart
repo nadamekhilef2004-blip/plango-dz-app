@@ -28,7 +28,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
   // ══════════════════════════════════════════════════════════
   //  ▶▶ PASTE YOUR API KEY HERE — KEEP IT PRIVATE ◀◀
   // ══════════════════════════════════════════════════════════
-  static const String _apiKey = 'AIzaSyBkpoU6aYoWQmv_IeDrco2xh7XI1RIKkIg';
+  static const String _apiKey = 'AI';
   // ══════════════════════════════════════════════════════════
 
   // ── State ──────────────────────────────────────────────────
