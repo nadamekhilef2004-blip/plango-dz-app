@@ -9,21 +9,41 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  # ── UI & Icons ───────────────────────────────────────────
   cupertino_icons: ^1.0.8
+
+  # ── Location ─────────────────────────────────────────────
   geolocator: ^10.1.0
+
+  # ── Network & Links ──────────────────────────────────────
   url_launcher: ^6.2.0
+  http: ^1.1.0
+
+  # ── Media ────────────────────────────────────────────────
   video_player: ^2.8.0
   chewie: ^1.7.0
-  http: ^1.1.0
+
+  # ── Internationalisation ──────────────────────────────────
   intl: ^0.18.1
+
+  # ── PDF & Sharing ─────────────────────────────────────────
   pdf: ^3.10.7
   printing: ^5.12.0
   share_plus: ^7.2.1
   path_provider: ^2.1.2
   open_file: ^3.3.2
+
+  # ── Local storage ─────────────────────────────────────────
   shared_preferences: ^2.2.3
-  sqflite: ^2.3.2          # SQLite database
-  path: ^1.9.0             # needed by sqflite to locate the DB file
+  sqflite: ^2.3.2
+  path: ^1.9.0
+
+  # ── Firebase ──────────────────────────────────────────────
+  firebase_core: ^2.24.2
+  firebase_auth: ^4.15.3
+  cloud_firestore: ^4.13.6
+  google_sign_in: ^6.2.1
 
 dev_dependencies:
   flutter_test:

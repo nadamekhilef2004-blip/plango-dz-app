@@ -1,3 +1,8 @@
+plugins {
+    // Remove version here — Flutter manages it via classpath
+    id("com.google.gms.google-services") apply false
+}
+
 allprojects {
     repositories {
         google()

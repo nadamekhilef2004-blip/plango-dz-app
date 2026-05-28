@@ -5,6 +5,7 @@ import '../services/auth_service.dart';
 import '../services/trip_storage.dart';
 import '../services/favorites_service.dart';
 import 'register_page.dart';
+import '../services/auth_service.dart';
 
 // ═══════════════════════════════════════════════════════════════
 //  LOGIN PAGE  —  Fixed
@@ -44,7 +45,7 @@ class _LoginPageState extends State<LoginPage>
       final e = (s + 0.55).clamp(0.0, 1.0);
       return Tween<Offset>(begin: const Offset(0, 0.18), end: Offset.zero)
           .animate(CurvedAnimation(
-              parent: _ctrl, curve: Interval(s, e, curve: Curves.easeOut)));
+          parent: _ctrl, curve: Interval(s, e, curve: Curves.easeOut)));
     });
     _ctrl.forward();
   }
@@ -325,9 +326,9 @@ class _R extends StatelessWidget {
   const _R({required this.fade, required this.slide, required this.child});
   @override
   Widget build(BuildContext context) => FadeTransition(
-        opacity: fade,
-        child: SlideTransition(position: slide, child: child),
-      );
+    opacity: fade,
+    child: SlideTransition(position: slide, child: child),
+  );
 }
 
 class _LuxField extends StatelessWidget {
@@ -349,35 +350,35 @@ class _LuxField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => TextField(
-        controller: controller,
-        obscureText: obscure,
-        keyboardType: keyboardType,
-        style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-            color: LuxTheme.espresso),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle:
-              const TextStyle(color: LuxTheme.latte, fontSize: 14),
-          prefixIcon: Icon(icon, color: LuxTheme.latte, size: 20),
-          suffixIcon: suffix,
-          filled: true,
-          fillColor: LuxTheme.cream,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: LuxTheme.radius14,
-            borderSide:
-                const BorderSide(color: LuxTheme.sandDark, width: 1.2),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: LuxTheme.radius14,
-            borderSide:
-                const BorderSide(color: LuxTheme.gold, width: 1.8),
-          ),
-        ),
-      );
+    controller: controller,
+    obscureText: obscure,
+    keyboardType: keyboardType,
+    style: const TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
+        color: LuxTheme.espresso),
+    decoration: InputDecoration(
+      hintText: hint,
+      hintStyle:
+      const TextStyle(color: LuxTheme.latte, fontSize: 14),
+      prefixIcon: Icon(icon, color: LuxTheme.latte, size: 20),
+      suffixIcon: suffix,
+      filled: true,
+      fillColor: LuxTheme.cream,
+      contentPadding:
+      const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: LuxTheme.radius14,
+        borderSide:
+        const BorderSide(color: LuxTheme.sandDark, width: 1.2),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: LuxTheme.radius14,
+        borderSide:
+        const BorderSide(color: LuxTheme.gold, width: 1.8),
+      ),
+    ),
+  );
 }
 
 class _SocialBtn extends StatelessWidget {
@@ -387,24 +388,24 @@ class _SocialBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => PressScale(
-        onTap: () {},
-        child: Container(
-          height: 52,
-          decoration: BoxDecoration(
-            color: LuxTheme.cream,
-            borderRadius: LuxTheme.radius14,
-            border: Border.all(color: LuxTheme.sandDark, width: 1.2),
-            boxShadow: LuxTheme.cardShadow,
-          ),
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(icon, size: 22, color: LuxTheme.mocha),
-            const SizedBox(width: 8),
-            Text(label,
-                style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: LuxTheme.mocha)),
-          ]),
-        ),
-      );
+    onTap: () {},
+    child: Container(
+      height: 52,
+      decoration: BoxDecoration(
+        color: LuxTheme.cream,
+        borderRadius: LuxTheme.radius14,
+        border: Border.all(color: LuxTheme.sandDark, width: 1.2),
+        boxShadow: LuxTheme.cardShadow,
+      ),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(icon, size: 22, color: LuxTheme.mocha),
+        const SizedBox(width: 8),
+        Text(label,
+            style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: LuxTheme.mocha)),
+      ]),
+    ),
+  );
 }

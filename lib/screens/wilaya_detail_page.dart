@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../utils/luxury_theme.dart';
-import '../models/destination.dart';
-import 'recommendation_page.dart';
+
+
 
 // ═══════════════════════════════════════════════════════════════
 //  WILAYA DETAIL PAGE  —  Luxury Edition
@@ -15,7 +15,6 @@ class WilayaDetailPage extends StatefulWidget {
   final List<String> attractions;
   final String bestTime;
   final String famousFood;
-  final List<Destination>? allDestinations;
 
   const WilayaDetailPage({
     super.key,
@@ -27,7 +26,6 @@ class WilayaDetailPage extends StatefulWidget {
     required this.attractions,
     required this.bestTime,
     required this.famousFood,
-    this.allDestinations,
   });
 
   @override
@@ -97,24 +95,7 @@ class _WilayaDetailPageState extends State<WilayaDetailPage>
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.only(right: 12, top: 10),
-                child: PressScale(
-                  onTap: () {
-                    if (widget.allDestinations != null) {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => RecommendationPage(
-                        allDestinations: widget.allDestinations!,
-                        currentDestination: Destination(name: widget.name, region: '', imageUrl: widget.imagePath, description: widget.description),
-                      )));
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), shape: BoxShape.circle),
-                    child: const Icon(Icons.recommend_rounded, color: Colors.white, size: 20),
-                  ),
-                ),
-              ),
+
             ],
             flexibleSpace: FlexibleSpaceBar(
               stretchModes: const [StretchMode.zoomBackground],

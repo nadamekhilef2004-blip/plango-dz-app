@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
-import 'database_helper.dart';
 import 'auth_service.dart';
 
 // ═══════════════════════════════════════════════════════════════
@@ -8,7 +8,7 @@ import 'auth_service.dart';
 // ═══════════════════════════════════════════════════════════════
 class SavedTrip {
   final String id;
-  final int    userId;
+  final String userId;
   final String wilayaName;
   final String wilayaImage;
   final String category;
@@ -31,31 +31,34 @@ class SavedTrip {
     required this.createdAt,
   });
 
-  factory SavedTrip.fromMap(Map<String, dynamic> m) => SavedTrip(
-    id:          m['id']           as String,
-    userId:      m['user_id']      as int,
-    wilayaName:  m['wilaya_name']  as String,
-    wilayaImage: m['wilaya_image'] as String,
-    category:    m['category']     as String,
-    days:        m['days']         as int,
-    totalBudget: m['total_budget'] as int,
-    budgetMode:  m['budget_mode']  as String,
-    createdAt:   DateTime.parse(m['created_at'] as String),
-    itinerary:   (m['days_data'] as List<Map<String, dynamic>>? ?? [])
-        .map(SavedTripDay.fromMap)
-        .toList(),
-  );
+  factory SavedTrip.fromFirestore(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return SavedTrip(
+      id:          doc.id,
+      userId:      d['userId']      as String,
+      wilayaName:  d['wilayaName']  as String,
+      wilayaImage: d['wilayaImage'] as String,
+      category:    d['category']    as String,
+      days:        d['days']        as int,
+      totalBudget: d['totalBudget'] as int,
+      budgetMode:  d['budgetMode']  as String,
+      createdAt:   (d['createdAt'] as Timestamp).toDate(),
+      itinerary:   (d['itinerary'] as List)
+          .map((e) => SavedTripDay.fromMap(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
 
-  Map<String, dynamic> toTripMap() => {
-    'id':           id,
-    'user_id':      userId,
-    'wilaya_name':  wilayaName,
-    'wilaya_image': wilayaImage,
-    'category':     category,
-    'days':         days,
-    'total_budget': totalBudget,
-    'budget_mode':  budgetMode,
-    'created_at':   createdAt.toIso8601String(),
+  Map<String, dynamic> toMap() => {
+    'userId':      userId,
+    'wilayaName':  wilayaName,
+    'wilayaImage': wilayaImage,
+    'category':    category,
+    'days':        days,
+    'totalBudget': totalBudget,
+    'budgetMode':  budgetMode,
+    'createdAt':   Timestamp.fromDate(createdAt),
+    'itinerary':   itinerary.map((d) => d.toMap()).toList(),
   };
 }
 
@@ -79,29 +82,28 @@ class SavedTripDay {
   });
 
   factory SavedTripDay.fromMap(Map<String, dynamic> m) => SavedTripDay(
-    dayNumber:  m['day_number'] as int,
+    dayNumber:  m['dayNumber']  as int,
     morning:    m['morning']    as String,
     lunch:      m['lunch']      as String,
     afternoon:  m['afternoon']  as String,
     evening:    m['evening']    as String,
     hotel:      m['hotel']      as String,
-    budgetDay:  m['budget_day'] as int,
+    budgetDay:  m['budgetDay']  as int,
   );
 
-  Map<String, dynamic> toDayMap(String tripId) => {
-    'trip_id':    tripId,
-    'day_number': dayNumber,
+  Map<String, dynamic> toMap() => {
+    'dayNumber':  dayNumber,
     'morning':    morning,
     'lunch':      lunch,
     'afternoon':  afternoon,
     'evening':    evening,
     'hotel':      hotel,
-    'budget_day': budgetDay,
+    'budgetDay':  budgetDay,
   };
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  TRIP STORAGE SERVICE  —  SQLite-backed singleton
+//  TRIP STORAGE SERVICE
 // ═══════════════════════════════════════════════════════════════
 class TripStorageService extends ChangeNotifier {
   static TripStorageService? _instance;
@@ -111,38 +113,30 @@ class TripStorageService extends ChangeNotifier {
   }
   TripStorageService._();
 
-  final _db   = DatabaseHelper.instance;
+  final _db   = FirebaseFirestore.instance;
   final _uuid = const Uuid();
 
   List<SavedTrip> _trips = [];
-  List<SavedTrip> get trips   => List.unmodifiable(_trips);
+  List<SavedTrip> get trips    => List.unmodifiable(_trips);
   bool            get hasTrips => _trips.isNotEmpty;
   int             get count    => _trips.length;
 
-  // ── Load trips for current user ────────────────────────────
+  CollectionReference get _col => _db.collection('trips');
+
+  // ── Load trips ─────────────────────────────────────────────
   Future<void> load() async {
     final user = AuthService.instance.user;
     if (user == null) { _trips = []; notifyListeners(); return; }
 
     try {
-      final rows = await _db.getTripsForUser(user.id);
-      _trips = rows.map((row) {
-        final days = (row['days'] as List)
-            .map((d) => SavedTripDay.fromMap(d as Map<String, dynamic>))
-            .toList();
-        return SavedTrip(
-          id:          row['id']           as String,
-          userId:      row['user_id']      as int,
-          wilayaName:  row['wilaya_name']  as String,
-          wilayaImage: row['wilaya_image'] as String,
-          category:    row['category']     as String,
-          days:        row['days_count'] ?? (row['days'] as List).length,
-          totalBudget: row['total_budget'] as int,
-          budgetMode:  row['budget_mode']  as String,
-          createdAt:   DateTime.parse(row['created_at'] as String),
-          itinerary:   days,
-        );
-      }).toList();
+      final snap = await _col
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+// Then sort in Dart instead:
+      _trips = snap.docs.map(SavedTrip.fromFirestore).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      _trips = snap.docs.map(SavedTrip.fromFirestore).toList();
       notifyListeners();
     } catch (_) {
       _trips = [];
@@ -151,59 +145,62 @@ class TripStorageService extends ChangeNotifier {
 
   // ── Save a trip ────────────────────────────────────────────
   Future<bool> save({
-    required String    wilayaName,
-    required String    wilayaImage,
-    required String    category,
-    required int       days,
-    required int       totalBudget,
-    required String    budgetMode,
+    required String wilayaName,
+    required String wilayaImage,
+    required String category,
+    required int    days,
+    required int    totalBudget,
+    required String budgetMode,
     required List<SavedTripDay> itinerary,
   }) async {
     final user = AuthService.instance.user;
     if (user == null) return false;
 
-    final tripId = _uuid.v4();
-    final trip   = SavedTrip(
-      id:          tripId,
-      userId:      user.id,
-      wilayaName:  wilayaName,
-      wilayaImage: wilayaImage,
-      category:    category,
-      days:        days,
-      totalBudget: totalBudget,
-      budgetMode:  budgetMode,
-      itinerary:   itinerary,
-      createdAt:   DateTime.now(),
-    );
-
-    final ok = await _db.saveTrip(
-      trip: trip.toTripMap(),
-      days: itinerary.map((d) => d.toDayMap(tripId)).toList(),
-    );
-
-    if (ok) {
+    try {
+      final tripId = _uuid.v4();
+      final trip   = SavedTrip(
+        id:          tripId,
+        userId:      user.uid,
+        wilayaName:  wilayaName,
+        wilayaImage: wilayaImage,
+        category:    category,
+        days:        days,
+        totalBudget: totalBudget,
+        budgetMode:  budgetMode,
+        itinerary:   itinerary,
+        createdAt:   DateTime.now(),
+      );
+      await _col.doc(tripId).set(trip.toMap());
       _trips.insert(0, trip);
       notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
     }
-    return ok;
   }
 
   // ── Delete a trip ──────────────────────────────────────────
   Future<void> delete(String tripId) async {
-    await _db.deleteTrip(tripId);
-    _trips.removeWhere((t) => t.id == tripId);
-    notifyListeners();
+    try {
+      await _col.doc(tripId).delete();
+      _trips.removeWhere((t) => t.id == tripId);
+      notifyListeners();
+    } catch (_) {}
   }
 
-  // ── Clear all trips for current user ───────────────────────
+  // ── Clear all ──────────────────────────────────────────────
   Future<void> clearAll() async {
     final user = AuthService.instance.user;
     if (user == null) return;
-    await _db.deleteAllTrips(user.id);
-    _trips = [];
-    notifyListeners();
+    try {
+      final snap  = await _col.where('userId', isEqualTo: user.uid).get();
+      final batch = _db.batch();
+      for (final doc in snap.docs) batch.delete(doc.reference);
+      await batch.commit();
+      _trips = [];
+      notifyListeners();
+    } catch (_) {}
   }
 
-  // ── Check if a trip id is saved ────────────────────────────
-  bool isSaved(String tripId) => _trips.any((t) => t.id == tripId);
+  void clear() { _trips = []; notifyListeners(); }
 }

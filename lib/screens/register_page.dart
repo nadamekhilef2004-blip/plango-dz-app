@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../utils/luxury_theme.dart';
 import '../services/auth_service.dart';
 import 'login_page.dart';
+import '../services/auth_service.dart';
 
 // ═══════════════════════════════════════════════════════════════
 //  REGISTER PAGE  —  Full account creation

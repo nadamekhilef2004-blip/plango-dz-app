@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
-import 'database_helper.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'auth_service.dart';
 
 // ═══════════════════════════════════════════════════════════════
 //  FAVORITE MODEL
 // ═══════════════════════════════════════════════════════════════
 class FavoriteWilaya {
-  final int    id;
-  final int    userId;
-  final String wilayaName;
-  final String wilayaImage;
-  final String category;
-  final double rating;
+  final String   id;
+  final String   userId;
+  final String   wilayaName;
+  final String   wilayaImage;
+  final String   category;
+  final double   rating;
   final DateTime addedAt;
 
   const FavoriteWilaya({
@@ -24,19 +24,31 @@ class FavoriteWilaya {
     required this.addedAt,
   });
 
-  factory FavoriteWilaya.fromMap(Map<String, dynamic> m) => FavoriteWilaya(
-    id:          m['id']           as int,
-    userId:      m['user_id']      as int,
-    wilayaName:  m['wilaya_name']  as String,
-    wilayaImage: m['wilaya_image'] as String,
-    category:    m['category']     as String,
-    rating:      (m['rating']  as num).toDouble(),
-    addedAt:     DateTime.parse(m['added_at'] as String),
-  );
+  factory FavoriteWilaya.fromFirestore(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return FavoriteWilaya(
+      id:          doc.id,
+      userId:      d['userId']      as String,
+      wilayaName:  d['wilayaName']  as String,
+      wilayaImage: d['wilayaImage'] as String,
+      category:    d['category']    as String,
+      rating:      (d['rating']     as num).toDouble(),
+      addedAt:     (d['addedAt']    as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'userId':      userId,
+    'wilayaName':  wilayaName,
+    'wilayaImage': wilayaImage,
+    'category':    category,
+    'rating':      rating,
+    'addedAt':     Timestamp.fromDate(addedAt),
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  FAVORITES SERVICE  —  SQLite-backed singleton
+//  FAVORITES SERVICE
 // ═══════════════════════════════════════════════════════════════
 class FavoritesService extends ChangeNotifier {
   static FavoritesService? _instance;
@@ -46,28 +58,36 @@ class FavoritesService extends ChangeNotifier {
   }
   FavoritesService._();
 
-  final _db = DatabaseHelper.instance;
+  final _db = FirebaseFirestore.instance;
 
   List<FavoriteWilaya> _favorites = [];
-  List<FavoriteWilaya> get favorites  => List.unmodifiable(_favorites);
+  List<FavoriteWilaya> get favorites    => List.unmodifiable(_favorites);
   bool                 get hasFavorites => _favorites.isNotEmpty;
-  int                  get count      => _favorites.length;
+  int                  get count        => _favorites.length;
 
-  // ── Load favorites for current user ────────────────────────
+  CollectionReference get _col => _db.collection('favorites');
+
+  // ── Load ───────────────────────────────────────────────────
   Future<void> load() async {
     final user = AuthService.instance.user;
     if (user == null) { _favorites = []; notifyListeners(); return; }
 
     try {
-      final rows = await _db.getFavoritesForUser(user.id);
-      _favorites = rows.map(FavoriteWilaya.fromMap).toList();
+      final snap = await _col
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      _favorites = snap.docs.map(FavoriteWilaya.fromFirestore).toList()
+        ..sort((a, b) => b.addedAt.compareTo(a.addedAt));
+
+      _favorites = snap.docs.map(FavoriteWilaya.fromFirestore).toList();
       notifyListeners();
     } catch (_) {
       _favorites = [];
     }
   }
 
-  // ── Toggle (add or remove) ─────────────────────────────────
+  // ── Toggle ─────────────────────────────────────────────────
   Future<bool> toggle({
     required String wilayaName,
     required String wilayaImage,
@@ -78,34 +98,42 @@ class FavoritesService extends ChangeNotifier {
     if (user == null) return false;
 
     if (isFavorite(wilayaName)) {
-      await _db.removeFavorite(userId: user.id, wilayaName: wilayaName);
+      final existing = _favorites.firstWhere((f) => f.wilayaName == wilayaName);
+      await _col.doc(existing.id).delete();
       _favorites.removeWhere((f) => f.wilayaName == wilayaName);
       notifyListeners();
-      return false; // removed
+      return false;
     } else {
-      final ok = await _db.addFavorite({
-        'user_id':      user.id,
-        'wilaya_name':  wilayaName,
-        'wilaya_image': wilayaImage,
-        'category':     category,
-        'rating':       rating,
-        'added_at':     DateTime.now().toIso8601String(),
-      });
-      if (ok) await load(); // reload to get auto-generated id
-      return true; // added
+      final doc = _col.doc();
+      final fav = FavoriteWilaya(
+        id:          doc.id,
+        userId:      user.uid,
+        wilayaName:  wilayaName,
+        wilayaImage: wilayaImage,
+        category:    category,
+        rating:      rating,
+        addedAt:     DateTime.now(),
+      );
+      await doc.set(fav.toMap());
+      _favorites.insert(0, fav);
+      notifyListeners();
+      return true;
     }
   }
 
-  // ── Remove by name ─────────────────────────────────────────
+  // ── Remove ─────────────────────────────────────────────────
   Future<void> remove(String wilayaName) async {
-    final user = AuthService.instance.user;
-    if (user == null) return;
-    await _db.removeFavorite(userId: user.id, wilayaName: wilayaName);
-    _favorites.removeWhere((f) => f.wilayaName == wilayaName);
-    notifyListeners();
+    try {
+      final existing = _favorites.firstWhere((f) => f.wilayaName == wilayaName);
+      await _col.doc(existing.id).delete();
+      _favorites.removeWhere((f) => f.wilayaName == wilayaName);
+      notifyListeners();
+    } catch (_) {}
   }
 
   // ── Check ──────────────────────────────────────────────────
   bool isFavorite(String wilayaName) =>
       _favorites.any((f) => f.wilayaName == wilayaName);
+
+  void clear() { _favorites = []; notifyListeners(); }
 }

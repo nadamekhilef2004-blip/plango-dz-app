@@ -28,7 +28,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
   // ══════════════════════════════════════════════════════════
   //  ▶▶ PASTE YOUR API KEY HERE — KEEP IT PRIVATE ◀◀
   // ══════════════════════════════════════════════════════════
-  static const String _apiKey = 'AI';
+  static const String _apiKey = 'AIXXXXXXXX for security dont show ';
   // ══════════════════════════════════════════════════════════
 
   // ── State ──────────────────────────────────────────────────
@@ -172,7 +172,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
 
     final trip = SavedTrip(
       id:          DateTime.now().millisecondsSinceEpoch.toString(),
-      userId:      AuthService.instance.user?.id ?? 0,
+      userId: AuthService.instance.user?.uid ?? '',
       wilayaName:  _wilaya!.name,
       wilayaImage: _wilaya!.imagePath,
       category:    _category,

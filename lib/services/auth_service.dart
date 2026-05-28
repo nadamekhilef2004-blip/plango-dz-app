@@ -1,25 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'database_helper.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 // ═══════════════════════════════════════════════════════════════
 //  USER MODEL
 // ═══════════════════════════════════════════════════════════════
 class AppUser {
-  final int    id;
+  final String uid;
   final String name;
   final String email;
-  final String password;
-  final String avatarColor;
   final DateTime joinedAt;
+  final String? photoUrl;
 
   const AppUser({
-    required this.id,
+    required this.uid,
     required this.name,
     required this.email,
-    required this.password,
-    required this.avatarColor,
     required this.joinedAt,
+    this.photoUrl,
   });
 
   String get initials {
@@ -30,22 +28,24 @@ class AppUser {
 
   String get firstName => name.trim().split(' ').first;
 
-  factory AppUser.fromMap(Map<String, dynamic> m) => AppUser(
-    id:          m['id']          as int,
-    name:        m['name']        as String,
-    email:       m['email']       as String,
-    password:    m['password']    as String,
-    avatarColor: m['avatar_color'] as String? ?? 'C1440E',
-    joinedAt:    DateTime.parse(m['joined_at'] as String),
+  String get avatarColor {
+    const colors = ['C1440E', 'C9A84C', '2E86AB', '4E7C59', '8B4513', '6B4226'];
+    return colors[name.codeUnitAt(0) % colors.length];
+  }
+
+  factory AppUser.fromFirebase(User user) => AppUser(
+    uid:      user.uid,
+    name:     user.displayName ?? user.email?.split('@').first ?? 'Traveller',
+    email:    user.email ?? '',
+    joinedAt: user.metadata.creationTime ?? DateTime.now(),
+    photoUrl: user.photoURL,
   );
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  AUTH SERVICE  —  SQLite-backed singleton
+//  AUTH SERVICE
 // ═══════════════════════════════════════════════════════════════
 class AuthService extends ChangeNotifier {
-  static const _sessionKey = 'logged_in_user_id';
-
   static AuthService? _instance;
   static AuthService get instance {
     _instance ??= AuthService._();
@@ -53,25 +53,29 @@ class AuthService extends ChangeNotifier {
   }
   AuthService._();
 
+  final _auth         = FirebaseAuth.instance;
+  final _googleSignIn = GoogleSignIn();
+
   AppUser? _user;
   AppUser? get user       => _user;
   bool     get isLoggedIn => _user != null;
 
-  final _db = DatabaseHelper.instance;
-
-  // ── Restore session on app start ──────────────────────────
+  // ── Restore session ────────────────────────────────────────
   Future<void> load() async {
-    try {
-      final prefs  = await SharedPreferences.getInstance();
-      final userId = prefs.getInt(_sessionKey);
-      if (userId != null) {
-        final row = await _db.getUserById(userId);
-        if (row != null) {
-          _user = AppUser.fromMap(row);
-          notifyListeners();
-        }
+    final firebaseUser = _auth.currentUser;
+    if (firebaseUser != null) {
+      _user = AppUser.fromFirebase(firebaseUser);
+      notifyListeners();
+    }
+
+    _auth.authStateChanges().listen((firebaseUser) {
+      if (firebaseUser != null) {
+        _user = AppUser.fromFirebase(firebaseUser);
+      } else {
+        _user = null;
       }
-    } catch (_) {}
+      notifyListeners();
+    });
   }
 
   // ── Register ───────────────────────────────────────────────
@@ -80,7 +84,6 @@ class AuthService extends ChangeNotifier {
     required String email,
     required String password,
   }) async {
-    // Basic validation
     if (name.trim().length < 2)
       return AuthResult.error('Name must be at least 2 characters.');
     if (!email.contains('@') || !email.contains('.'))
@@ -88,66 +91,108 @@ class AuthService extends ChangeNotifier {
     if (password.length < 6)
       return AuthResult.error('Password must be at least 6 characters.');
 
-    final now = DateTime.now();
-    final id  = await _db.insertUser({
-      'name':         name.trim(),
-      'email':        email.trim().toLowerCase(),
-      'password':     password,
-      'avatar_color': _pickColor(name),
-      'joined_at':    now.toIso8601String(),
-    });
+    try {
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email:    email.trim(),
+        password: password,
+      );
 
-    if (id == -1) return AuthResult.error('An account with this email already exists.');
+      // Update name — don't fail if this doesn't work immediately
+      try {
+        await credential.user?.updateDisplayName(name.trim());
+        await credential.user?.reload();
+      } catch (_) {
+        // Name update failed but account was created — that's fine
+      }
 
-    final row = await _db.getUserById(id);
-    if (row == null) return AuthResult.error('Something went wrong. Please try again.');
+      // Use the name we have even if Firebase didn't save it yet
+      _user = AppUser(
+        uid:      credential.user!.uid,
+        name:     name.trim(),  // ← use the name directly, don't wait for Firebase
+        email:    email.trim(),
+        joinedAt: DateTime.now(),
+        photoUrl: null,
+      );
 
-    _user = AppUser.fromMap(row);
-    await _saveSession(_user!.id);
-    notifyListeners();
-    return AuthResult.success();
+      notifyListeners();
+      return AuthResult.success();
+
+    } on FirebaseAuthException catch (e) {
+      return AuthResult.error(_firebaseError(e.code));
+    } catch (e) {
+      return AuthResult.error('Something went wrong. Please try again.');
+    }
   }
-
   // ── Login ──────────────────────────────────────────────────
   Future<AuthResult> login({
     required String email,
     required String password,
   }) async {
-    final row = await _db.getUserByEmail(email.trim());
-    if (row == null)               return AuthResult.error('No account found with this email.');
-    if (row['password'] != password) return AuthResult.error('Incorrect password.');
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email:    email.trim(),
+        password: password,
+      );
+      _user = AppUser.fromFirebase(_auth.currentUser!);
+      notifyListeners();
+      return AuthResult.success();
+    } on FirebaseAuthException catch (e) {
+      return AuthResult.error(_firebaseError(e.code));
+    } catch (e) {
+      return AuthResult.error('Something went wrong. Please try again.');
+    }
+  }
 
-    _user = AppUser.fromMap(row);
-    await _saveSession(_user!.id);
-    notifyListeners();
-    return AuthResult.success();
+  // ── Google Sign-In ─────────────────────────────────────────
+  Future<AuthResult> signInWithGoogle() async {
+    try {
+      final googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) return AuthResult.error('Sign in cancelled.');
+
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken:     googleAuth.idToken,
+      );
+      await _auth.signInWithCredential(credential);
+      _user = AppUser.fromFirebase(_auth.currentUser!);
+      notifyListeners();
+      return AuthResult.success();
+    } on FirebaseAuthException catch (e) {
+      return AuthResult.error(_firebaseError(e.code));
+    } catch (e) {
+      return AuthResult.error('Google sign in failed. Please try again.');
+    }
+  }
+
+  // ── Forgot password ────────────────────────────────────────
+  Future<AuthResult> sendPasswordReset(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      return AuthResult.success();
+    } on FirebaseAuthException catch (e) {
+      return AuthResult.error(_firebaseError(e.code));
+    }
   }
 
   // ── Update name ────────────────────────────────────────────
   Future<void> updateName(String name) async {
-    if (_user == null || name.trim().length < 2) return;
-    await _db.updateUser(_user!.id, {'name': name.trim()});
-    final row = await _db.getUserById(_user!.id);
-    if (row != null) _user = AppUser.fromMap(row);
+    if (_auth.currentUser == null) return;
+    await _auth.currentUser!.updateDisplayName(name.trim());
+    await _auth.currentUser!.reload();
+    _user = AppUser.fromFirebase(_auth.currentUser!);
     notifyListeners();
   }
 
   // ── Update email ───────────────────────────────────────────
   Future<AuthResult> updateEmail(String email) async {
-    if (_user == null) return AuthResult.error('Not logged in.');
-    if (!email.contains('@')) return AuthResult.error('Invalid email.');
-
-    // Check not already taken by another account
-    final existing = await _db.getUserByEmail(email.trim());
-    if (existing != null && existing['id'] != _user!.id) {
-      return AuthResult.error('This email is already in use.');
+    try {
+      await _auth.currentUser!.verifyBeforeUpdateEmail(email.trim());
+      notifyListeners();
+      return AuthResult.success();
+    } on FirebaseAuthException catch (e) {
+      return AuthResult.error(_firebaseError(e.code));
     }
-
-    await _db.updateUser(_user!.id, {'email': email.trim().toLowerCase()});
-    final row = await _db.getUserById(_user!.id);
-    if (row != null) _user = AppUser.fromMap(row);
-    notifyListeners();
-    return AuthResult.success();
   }
 
   // ── Update password ────────────────────────────────────────
@@ -155,48 +200,49 @@ class AuthService extends ChangeNotifier {
     required String currentPassword,
     required String newPassword,
   }) async {
-    if (_user == null)                  return AuthResult.error('Not logged in.');
-    if (_user!.password != currentPassword) return AuthResult.error('Current password is incorrect.');
-    if (newPassword.length < 6)         return AuthResult.error('New password must be at least 6 characters.');
-
-    await _db.updateUser(_user!.id, {'password': newPassword});
-    final row = await _db.getUserById(_user!.id);
-    if (row != null) _user = AppUser.fromMap(row);
-    notifyListeners();
-    return AuthResult.success();
-  }
-
-  // ── Delete account ─────────────────────────────────────────
-  Future<void> deleteAccount() async {
-    if (_user == null) return;
-    await _db.deleteUser(_user!.id);
-    await _clearSession();
-    _user = null;
-    notifyListeners();
+    try {
+      final user       = _auth.currentUser!;
+      final credential = EmailAuthProvider.credential(
+        email:    user.email!,
+        password: currentPassword,
+      );
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
+      return AuthResult.success();
+    } on FirebaseAuthException catch (e) {
+      return AuthResult.error(_firebaseError(e.code));
+    }
   }
 
   // ── Logout ─────────────────────────────────────────────────
   Future<void> logout() async {
+    await _googleSignIn.signOut();
+    await _auth.signOut();
     _user = null;
-    await _clearSession();
     notifyListeners();
   }
 
-  // ── Session helpers ────────────────────────────────────────
-  Future<void> _saveSession(int userId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_sessionKey, userId);
+  // ── Delete account ─────────────────────────────────────────
+  Future<void> deleteAccount() async {
+    await _auth.currentUser?.delete();
+    _user = null;
+    notifyListeners();
   }
 
-  Future<void> _clearSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_sessionKey);
-  }
-
-  // ── Avatar color picker ────────────────────────────────────
-  String _pickColor(String name) {
-    const colors = ['C1440E', 'C9A84C', '2E86AB', '4E7C59', '8B4513', '6B4226'];
-    return colors[name.codeUnitAt(0) % colors.length];
+  // ── Error messages ─────────────────────────────────────────
+  String _firebaseError(String code) {
+    switch (code) {
+      case 'email-already-in-use':   return 'An account with this email already exists.';
+      case 'invalid-email':          return 'Please enter a valid email address.';
+      case 'weak-password':          return 'Password is too weak. Use at least 6 characters.';
+      case 'user-not-found':         return 'No account found with this email.';
+      case 'wrong-password':         return 'Incorrect password. Please try again.';
+      case 'invalid-credential':     return 'Incorrect email or password.';
+      case 'too-many-requests':      return 'Too many attempts. Please try again later.';
+      case 'network-request-failed': return 'Network error. Check your connection.';
+      case 'requires-recent-login':  return 'Please sign out and sign in again.';
+      default:                       return 'Something went wrong. Please try again.';
+    }
   }
 }
 

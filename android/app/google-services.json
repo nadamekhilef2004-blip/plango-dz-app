@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "148709412695",
+    "project_id": "plango-dz",
+    "storage_bucket": "plango-dz.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:148709412695:android:b8f866ca9f6496febf3812",
+        "android_client_info": {
+          "package_name": "com.example.plango_dz_new"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAp2UXYdCrd8N7cCfaCXGY6nRrUILcp5VE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
