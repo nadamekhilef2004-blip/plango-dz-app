@@ -11,6 +11,7 @@ import '../data/wilaya_data.dart';
 import '../services/trip_storage.dart';
 import '../services/auth_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../utils/env.dart';
 
 // ═══════════════════════════════════════════════════════════════
 //  AI TRIP PLANNER  —  Professional Luxury Edition
@@ -227,10 +228,10 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
           await Future.delayed(Duration(seconds: 3 * attempt));
         }
         try {
-          final response = await http
+          final response = await htqtp
               .post(
             Uri.parse(
-              'https://generativelanguage.googleapis.com/v1beta/models/$model?key=$_apiKey',
+              'https://generativelanguage.googleapis.com/v1beta/models/$model?key=${Env.geminiApiKey}',
             ),
             headers: {'content-type': 'application/json'},
             body: jsonEncode({

@@ -7,10 +7,11 @@ import 'services/trip_storage.dart';
 import 'services/favorites_service.dart';
 import 'screens/home_page.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'utils/env.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
+  await Env.load();
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
