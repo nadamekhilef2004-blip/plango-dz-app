@@ -136,7 +136,7 @@ class TripStorageService extends ChangeNotifier {
 // Then sort in Dart instead:
       _trips = snap.docs.map(SavedTrip.fromFirestore).toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      _trips = snap.docs.map(SavedTrip.fromFirestore).toList();
+
       notifyListeners();
     } catch (_) {
       _trips = [];

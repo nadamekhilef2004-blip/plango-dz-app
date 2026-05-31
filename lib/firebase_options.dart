@@ -53,7 +53,7 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AI noooooo ',
+    apiKey: 'AIzaSyAp2UXYdCrd8N7cCfaCXGY6nRrUILcp5VE',
     appId: '1:148709412695:android:b8f866ca9f6496febf3812',
     messagingSenderId: '148709412695',
     projectId: 'plango-dz',

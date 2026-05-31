@@ -5,7 +5,7 @@ import '../services/auth_service.dart';
 import '../services/trip_storage.dart';
 import '../services/favorites_service.dart';
 import 'register_page.dart';
-import '../services/auth_service.dart';
+
 
 // ═══════════════════════════════════════════════════════════════
 //  LOGIN PAGE  —  Fixed
@@ -76,17 +76,19 @@ class _LoginPageState extends State<LoginPage>
     if (result.ok) {
       HapticFeedback.mediumImpact();
 
-      // ── Reload services so data is ready immediately ──────
-      await TripStorageService.instance.load();
-      await FavoritesService.instance.load();
+      try {
+        await TripStorageService.instance.load();
+        await FavoritesService.instance.load();
+      } catch (e) {
+        debugPrint('=== LOAD ERROR: ${e.toString()}');
+      }
 
       if (!mounted) return;
       setState(() => _loading = false);
-
-      // Pop back to profile — it will auto-update via AuthService listener
       Navigator.pop(context);
     } else {
       HapticFeedback.heavyImpact();
+      debugPrint('=== LOGIN FAILED: ${result.errorMessage}');
       setState(() {
         _loading = false;
         _error   = result.errorMessage;

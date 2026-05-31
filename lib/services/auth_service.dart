@@ -120,7 +120,8 @@ class AuthService extends ChangeNotifier {
     } on FirebaseAuthException catch (e) {
       return AuthResult.error(_firebaseError(e.code));
     } catch (e) {
-      return AuthResult.error('Something went wrong. Please try again.');
+      debugPrint('=== REGISTER ERROR: ${e.runtimeType} | ${e.toString()}');
+      return AuthResult.error(e.toString());
     }
   }
   // ── Login ──────────────────────────────────────────────────
@@ -139,7 +140,8 @@ class AuthService extends ChangeNotifier {
     } on FirebaseAuthException catch (e) {
       return AuthResult.error(_firebaseError(e.code));
     } catch (e) {
-      return AuthResult.error('Something went wrong. Please try again.');
+      debugPrint('=== LOGIN ERROR: ${e.runtimeType} | ${e.toString()}');
+      return AuthResult.error(e.toString());
     }
   }
 

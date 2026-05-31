@@ -9,7 +9,7 @@ import 'login_page.dart';
 import 'register_page.dart';
 
 // ═══════════════════════════════════════════════════════════════
-//  PROFILE PAGE  —  Auto-updates when user signs in / registers
+//  PROFILE PAGE
 // ═══════════════════════════════════════════════════════════════
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -31,26 +31,21 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   void initState() {
     super.initState();
-
     _ctrl  = AnimationController(vsync: this, duration: const Duration(milliseconds: 550));
     _fade  = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
     _slide = Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
-
-    // ── Listen to AuthService — rebuilds whenever user logs in/out/registers ──
     _auth.addListener(_onAuthChanged);
     _trips.addListener(_onDataChanged);
     _favorites.addListener(_onDataChanged);
-
     _ctrl.forward();
   }
 
-  // Called whenever auth state changes (login, register, logout, update)
   void _onAuthChanged() {
     if (!mounted) return;
-    setState(() {});          // rebuild immediately
+    setState(() {});
     _ctrl.reset();
-    _ctrl.forward();          // re-run entrance animation
+    _ctrl.forward();
   }
 
   void _onDataChanged() {
@@ -73,23 +68,18 @@ class _ProfilePageState extends State<ProfilePage>
       opacity: _fade,
       child: SlideTransition(
         position: _slide,
-        // Switch between guest and profile view based on auth state
         child: _auth.isLoggedIn ? _buildProfile() : _buildGuest(),
       ),
     );
   }
 
-  // ══════════════════════════════════════════════════════════
-  //  GUEST VIEW  —  shown before login/register
-  // ══════════════════════════════════════════════════════════
+  // ── GUEST VIEW ──────────────────────────────────────────────
   Widget _buildGuest() {
     return Scaffold(
       backgroundColor: LuxTheme.sand,
       body: SafeArea(child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(28, 40, 28, 28),
         child: Column(children: [
-
-          // Avatar placeholder
           Container(
             width: 100, height: 100,
             decoration: BoxDecoration(
@@ -104,7 +94,6 @@ class _ProfilePageState extends State<ProfilePage>
             child: const Icon(Icons.person_outline_rounded,
                 size: 48, color: LuxTheme.latte),
           ),
-
           const SizedBox(height: 20),
           const Text('Your Profile', style: LuxTheme.displayMd),
           const SizedBox(height: 8),
@@ -113,12 +102,9 @@ class _ProfilePageState extends State<ProfilePage>
             style: LuxTheme.body,
             textAlign: TextAlign.center,
           ),
-
           const SizedBox(height: 36),
           const GoldDivider(label: 'GET STARTED'),
           const SizedBox(height: 28),
-
-          // Feature list
           _Feature(icon: Icons.luggage_rounded,      label: 'Save & manage your itineraries'),
           const SizedBox(height: 14),
           _Feature(icon: Icons.favorite_rounded,     label: 'Bookmark favourite destinations'),
@@ -126,10 +112,7 @@ class _ProfilePageState extends State<ProfilePage>
           _Feature(icon: Icons.auto_awesome_rounded, label: 'Personalised AI trip planning'),
           const SizedBox(height: 14),
           _Feature(icon: Icons.share_rounded,        label: 'Share your journeys with friends'),
-
           const SizedBox(height: 36),
-
-          // Create account button
           SizedBox(width: double.infinity, child: LuxButton(
             label: 'Create Account',
             icon: Icons.person_add_rounded,
@@ -137,13 +120,9 @@ class _ProfilePageState extends State<ProfilePage>
               HapticFeedback.lightImpact();
               await Navigator.push(
                   context, MaterialPageRoute(builder: (_) => const RegisterPage()));
-              // No need to setState — AuthService listener handles it
             },
           )),
-
           const SizedBox(height: 14),
-
-          // Sign in button
           SizedBox(width: double.infinity, child: LuxButton(
             label: 'Sign In',
             icon: Icons.login_rounded,
@@ -152,23 +131,19 @@ class _ProfilePageState extends State<ProfilePage>
               HapticFeedback.lightImpact();
               await Navigator.push(
                   context, MaterialPageRoute(builder: (_) => const LoginPage()));
-              // No need to setState — AuthService listener handles it
             },
           )),
-
           const SizedBox(height: 32),
         ]),
       )),
     );
   }
 
-  // ══════════════════════════════════════════════════════════
-  //  AUTHENTICATED PROFILE VIEW
-  // ══════════════════════════════════════════════════════════
+  // ── AUTHENTICATED PROFILE VIEW ───────────────────────────────
   Widget _buildProfile() {
     final user       = _auth.user!;
     final avatarHex  = user.avatarColor;
-    final avatarColor= Color(int.parse('FF$avatarHex', radix: 16));
+    final avatarColor = Color(int.parse('FF$avatarHex', radix: 16));
     final tripCount  = _trips.count;
     final favCount   = _favorites.count;
 
@@ -176,8 +151,6 @@ class _ProfilePageState extends State<ProfilePage>
       backgroundColor: LuxTheme.sand,
       body: CustomScrollView(
         slivers: [
-
-          // ── Profile hero ──
           SliverToBoxAdapter(child: Container(
             padding: const EdgeInsets.fromLTRB(24, 56, 24, 28),
             decoration: BoxDecoration(
@@ -185,8 +158,6 @@ class _ProfilePageState extends State<ProfilePage>
               boxShadow: LuxTheme.cardShadow,
             ),
             child: Column(children: [
-
-              // Avatar with initials + edit button
               Stack(alignment: Alignment.bottomRight, children: [
                 Container(
                   width: 90, height: 90,
@@ -209,7 +180,6 @@ class _ProfilePageState extends State<ProfilePage>
                     ),
                   )),
                 ),
-                // Edit avatar button
                 PressScale(
                   onTap: () => _showEditNameSheet(user.name),
                   child: Container(
@@ -224,22 +194,15 @@ class _ProfilePageState extends State<ProfilePage>
                   ),
                 ),
               ]),
-
               const SizedBox(height: 16),
-
-              // Name — shows immediately after register
-              Text(
-                user.name,
-                style: LuxTheme.displayMd.copyWith(fontSize: 24),
-                textAlign: TextAlign.center,
-              ),
+              Text(user.name,
+                  style: LuxTheme.displayMd.copyWith(fontSize: 24),
+                  textAlign: TextAlign.center),
               const SizedBox(height: 4),
               Text(user.email,
                   style: LuxTheme.body.copyWith(fontSize: 13),
                   textAlign: TextAlign.center),
               const SizedBox(height: 12),
-
-              // Member badge
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 decoration: BoxDecoration(
@@ -260,7 +223,6 @@ class _ProfilePageState extends State<ProfilePage>
             ]),
           )),
 
-          // ── Stats row ──
           SliverToBoxAdapter(child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
             child: Row(children: [
@@ -272,12 +234,10 @@ class _ProfilePageState extends State<ProfilePage>
             ]),
           )),
 
-          // ── Settings sections ──
           SliverToBoxAdapter(child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
 
-              // Account
               const GoldDivider(label: 'ACCOUNT'),
               const SizedBox(height: 14),
               _SettingsGroup(items: [
@@ -300,31 +260,9 @@ class _ProfilePageState extends State<ProfilePage>
                 ),
               ]),
 
-              const SizedBox(height: 22),
 
-              // Preferences
-              const GoldDivider(label: 'PREFERENCES'),
-              const SizedBox(height: 14),
-              _SettingsGroup(items: [
-                _SettingsTile(
-                    icon: Icons.notifications_none_rounded,
-                    label: 'Notifications',
-                    onTap: () {}),
-                _SettingsTile(
-                    icon: Icons.language_rounded,
-                    label: 'Language',
-                    value: 'English',
-                    onTap: () {}),
-                _SettingsTile(
-                    icon: Icons.dark_mode_outlined,
-                    label: 'Appearance',
-                    value: 'Light',
-                    onTap: () {}),
-              ]),
 
               const SizedBox(height: 22),
-
-              // Support
               const GoldDivider(label: 'SUPPORT'),
               const SizedBox(height: 14),
               _SettingsGroup(items: [
@@ -347,7 +285,6 @@ class _ProfilePageState extends State<ProfilePage>
               const GoldDivider(),
               const SizedBox(height: 20),
 
-              // Sign out
               PressScale(
                 onTap: _confirmSignOut,
                 child: Container(
@@ -378,7 +315,6 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
-  // ── Edit name ─────────────────────────────────────────────
   void _showEditNameSheet(String current) {
     HapticFeedback.lightImpact();
     final ctrl = TextEditingController(text: current);
@@ -402,7 +338,6 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
-  // ── Edit email ────────────────────────────────────────────
   void _showEditEmailSheet(String current) {
     HapticFeedback.lightImpact();
     final ctrl = TextEditingController(text: current);
@@ -426,18 +361,16 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
-  // ── Change password ───────────────────────────────────────
   void _showChangePasswordSheet() {
     HapticFeedback.lightImpact();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _ChangePasswordSheet(),
+      builder: (_) => const _ChangePasswordSheet(),
     );
   }
 
-  // ── Sign out ──────────────────────────────────────────────
   Future<void> _confirmSignOut() async {
     HapticFeedback.mediumImpact();
     final confirm = await showModalBottomSheet<bool>(
@@ -452,7 +385,6 @@ class _ProfilePageState extends State<ProfilePage>
     );
     if (confirm == true) {
       await _auth.logout();
-      // AuthService notifies listeners → _onAuthChanged fires → switches to guest view
       HapticFeedback.lightImpact();
     }
   }
@@ -648,20 +580,26 @@ class _EditSheet extends StatelessWidget {
 }
 
 class _ChangePasswordSheet extends StatefulWidget {
+  const _ChangePasswordSheet();
   @override
   State<_ChangePasswordSheet> createState() => _ChangePasswordSheetState();
 }
+
 class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
   final _current = TextEditingController();
   final _newPass = TextEditingController();
   final _confirm = TextEditingController();
   bool _ob1 = true, _ob2 = true, _ob3 = true;
   String? _error;
+
   @override
   void dispose() {
-    _current.dispose(); _newPass.dispose(); _confirm.dispose();
+    _current.dispose();
+    _newPass.dispose();
+    _confirm.dispose();
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) => Padding(
     padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -699,7 +637,8 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
             Row(children: [
               Expanded(child: PressScale(
                 onTap: () => Navigator.pop(context),
-                child: Container(height: 50,
+                child: Container(
+                  height: 50,
                   decoration: BoxDecoration(color: LuxTheme.sand,
                       borderRadius: LuxTheme.radius14,
                       border: Border.all(color: LuxTheme.sandDark)),
@@ -711,11 +650,6 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
               const SizedBox(width: 12),
               Expanded(child: PressScale(
                 onTap: () async {
-                  final user = AuthService.instance.user;
-                  if (_current.text != user?.password) {
-                    setState(() => _error = 'Current password is incorrect.');
-                    return;
-                  }
                   if (_newPass.text.length < 6) {
                     setState(() => _error = 'New password too short (min 6 chars).');
                     return;
@@ -724,12 +658,20 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                     setState(() => _error = 'Passwords do not match.');
                     return;
                   }
-                  await AuthService.instance.updatePassword(
-                      currentPassword: _current.text, newPassword: _newPass.text);
-                  HapticFeedback.mediumImpact();
-                  if (context.mounted) Navigator.pop(context);
+                  final result = await AuthService.instance.updatePassword(
+                    currentPassword: _current.text,
+                    newPassword: _newPass.text,
+                  );
+                  if (!context.mounted) return;
+                  if (result.ok) {
+                    HapticFeedback.mediumImpact();
+                    Navigator.pop(context);
+                  } else {
+                    setState(() => _error = result.errorMessage);
+                  }
                 },
-                child: Container(height: 50,
+                child: Container(
+                  height: 50,
                   decoration: BoxDecoration(
                       gradient: const LinearGradient(
                           colors: [LuxTheme.terracotta, LuxTheme.terracottaL]),
@@ -762,19 +704,20 @@ class _PF extends StatelessWidget {
       hintStyle: const TextStyle(color: LuxTheme.latte, fontSize: 13),
       prefixIcon: const Icon(Icons.lock_outline_rounded,
           color: LuxTheme.latte, size: 18),
-      suffixIcon: PressScale(onTap: onToggle,
-          child: Padding(padding: const EdgeInsets.only(right: 14),
-              child: Icon(ob ? Icons.visibility_off_outlined
-                  : Icons.visibility_outlined,
-                  color: LuxTheme.latte, size: 18))),
+      suffixIcon: PressScale(
+        onTap: onToggle,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 14),
+          child: Icon(ob ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+              color: LuxTheme.latte, size: 18),
+        ),
+      ),
       filled: true, fillColor: LuxTheme.sand,
-      contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       enabledBorder: OutlineInputBorder(borderRadius: LuxTheme.radius14,
           borderSide: const BorderSide(color: LuxTheme.sandDark)),
       focusedBorder: OutlineInputBorder(borderRadius: LuxTheme.radius14,
-          borderSide: const BorderSide(
-              color: LuxTheme.gold, width: 1.8)),
+          borderSide: const BorderSide(color: LuxTheme.gold, width: 1.8)),
     ),
   );
 }
