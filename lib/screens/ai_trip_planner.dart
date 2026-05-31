@@ -219,9 +219,9 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
   Future<http.Response> _callGeminiWithRetry(String prompt) async {
     // ── Use exact model names that work with v1beta ──
     const models = [
-      'gemini-2.5-flash:generateContent',
-      'gemini-2.0-flash:generateContent',
-      'gemini-1.5-flash-latest:generateContent',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash-latest',
     ];
 
     for (final model in models) {
@@ -231,12 +231,14 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
           await Future.delayed(Duration(seconds: 3 * attempt));
         }
         try {
-          final response = await http
-              .post(
+          final response = await http.post(
             Uri.parse(
-              'https://generativelanguage.googleapis.com/v1beta/models/$model?key=${Env.geminiApiKey}',
+              'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent',
             ),
-            headers: {'content-type': 'application/json'},
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': _apiKey,   // ← key in header for AQ. keys
+            },
             body: jsonEncode({
               'contents': [
                 {
@@ -249,8 +251,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
                 'responseMimeType': 'application/json',
               },
             }),
-          )
-              .timeout(const Duration(seconds: 30));
+          ).timeout(const Duration(seconds: 30));
 
           debugPrint('Model: $model | Status: ${response.statusCode}');
 

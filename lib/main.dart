@@ -10,6 +10,7 @@ import 'utils/env.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Env.load();
 
   await Env.load();
 
