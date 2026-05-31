@@ -6,11 +6,11 @@ import 'services/auth_service.dart';
 import 'services/trip_storage.dart';
 import 'services/favorites_service.dart';
 import 'screens/home_page.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'utils/env.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   await Env.load();
 
   await SystemChrome.setPreferredOrientations([
@@ -18,15 +18,12 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  // Initialize Firebase using generated options
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Restore session
   await AuthService.instance.load();
 
-  // Load data if logged in
   if (AuthService.instance.isLoggedIn) {
     await TripStorageService.instance.load();
     await FavoritesService.instance.load();

@@ -12,6 +12,7 @@ import '../services/trip_storage.dart';
 import '../services/auth_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../utils/env.dart';
+import 'package:http/http.dart' as http;
 
 // ═══════════════════════════════════════════════════════════════
 //  AI TRIP PLANNER  —  Professional Luxury Edition
@@ -26,7 +27,9 @@ class AITripPlannerPage extends StatefulWidget {
 class _AITripPlannerPageState extends State<AITripPlannerPage>
     with TickerProviderStateMixin {
 
-  static String get _apiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
+  // ── API key (from env, never hardcoded) ───────────────────
+  String get _apiKey => Env.geminiApiKey;
+
   // ── State ──────────────────────────────────────────────────
   int          _currentStep  = 0;
   String       _category     = '';
@@ -228,7 +231,7 @@ class _AITripPlannerPageState extends State<AITripPlannerPage>
           await Future.delayed(Duration(seconds: 3 * attempt));
         }
         try {
-          final response = await htqtp
+          final response = await http
               .post(
             Uri.parse(
               'https://generativelanguage.googleapis.com/v1beta/models/$model?key=${Env.geminiApiKey}',
@@ -1899,7 +1902,6 @@ class _TipCard extends StatelessWidget {
     ]),
   );
 }
-
 // ── Data model ────────────────────────────────────────────────
 class _ItineraryDay {
   final int dayNumber, budgetDay;
